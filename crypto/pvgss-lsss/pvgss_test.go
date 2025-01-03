@@ -7,12 +7,13 @@ import (
 	lib "github.com/fentec-project/gofe/abe"
 	"github.com/fentec-project/gofe/sample"
 	"github.com/stretchr/testify/assert"
+	"math/big"
 	"testing"
 )
 
 func TestGSS(t *testing.T) {
 	//test GSS based on LSSS
-	gss := NewGSS()
+	gss := NewGSS(bn128.Order)
 
 	//shareholders := []string{"holder1", "holder2", "holder3", "holder4", "holder5"}
 
@@ -69,7 +70,7 @@ func TestGSS(t *testing.T) {
 
 func TestGrpGSS(t *testing.T) {
 	//test GrpGSS based on GrpLSSS
-	grpGss := NewGrpGSS()
+	grpGss := NewGrpGSS(bn128.Order, new(bn128.G1).ScalarBaseMult(big.NewInt(1)))
 	//get random secret on G
 	_, S, err := bn128.RandomG1(rand.Reader)
 
@@ -110,6 +111,96 @@ func TestGrpGSS(t *testing.T) {
 	badShares = append(badShares, grpShares[2])
 
 	_, err = grpGss.GrpLSSSRecon(msp, badShares)
+	if err != nil {
+		fmt.Printf("bad share return LSSSRecon Error: %v\n", err)
+	}
+	assert.Error(t, err)
+}
+
+func TestPvGSS(t *testing.T) {
+	//test PvGSS based on LSSS
+	pvGss := NewPvGSS()
+
+	shareholders := []string{"holder1", "holder2", "holder3", "holder4", "holder5"}
+
+	skMap, pk1Map, pk2Map, err := pvGss.Setup(shareholders)
+	if err != nil {
+		t.Fatalf("pvgss failed to setup: %v\n", err)
+	}
+
+	// create a msp struct out of the boolean formula
+	msp, err := lib.BooleanToMSP("((holder1 AND holder2) OR (holder3 AND holder4)) OR holder5", false)
+	if err != nil {
+		t.Fatalf("Failed to generate the policy: %v\n", err)
+	}
+	//sample share s
+	sampler := sample.NewUniform(pvGss.P)
+	s, err := sampler.Sample()
+	if err != nil {
+		t.Fatalf("Failed to sample: %v\n", err)
+	}
+
+	GrpShare := new(bn128.G1).ScalarMult(pvGss.G1, s)
+
+	//share
+	pvShares, err := pvGss.Share(s, msp, pk1Map)
+	if err != nil {
+		t.Fatalf("pvgss failed to share: %v\n", err)
+	}
+
+	//share verify
+	isShareValid, err := pvGss.Verify(pvShares, msp, pk1Map)
+	if err != nil || isShareValid == false {
+		t.Fatalf("pvgss share verify failed: %v\n", err)
+	}
+
+	n := len(pvShares)
+	decShares := make([]*GrpGSSShare, n)
+
+	//decrypt share and verify
+	for i, share := range pvShares {
+		decShare, err := pvGss.PreRecon(share, skMap[share.ID])
+		if err != nil {
+			t.Fatalf("pvgss share decryption failed: %v\n", err)
+		}
+
+		isDecShareValid, err := pvGss.KeyVrf(share, decShare, pk2Map[share.ID])
+		if err != nil || isDecShareValid == false {
+			t.Fatalf("pvgss share decryption verify failed: %v\n", err)
+		}
+
+		decShares[i] = &GrpGSSShare{
+			ID:    share.ID,
+			value: decShare,
+		}
+	}
+
+	//reconstruct
+
+	//holder1,holder2 recon
+	goodShares := make([]*GrpGSSShare, 0)
+	goodShares = append(goodShares, decShares[0])
+	goodShares = append(goodShares, decShares[1])
+	goodShares = append(goodShares, decShares[2])
+	goodShares = append(goodShares, decShares[3])
+	goodShares = append(goodShares, decShares[4])
+	reconValue, err := pvGss.Recon(msp, goodShares)
+
+	assert.Equal(t, GrpShare.String(), reconValue.String())
+
+	//holder5 recon
+	goodShares1 := make([]*GrpGSSShare, 0)
+	goodShares1 = append(goodShares1, decShares[4])
+	reconValue, err = pvGss.Recon(msp, goodShares1)
+
+	assert.Equal(t, GrpShare.String(), reconValue.String())
+
+	//bad share of holder1 and holder3
+	badShares := make([]*GrpGSSShare, 0)
+	badShares = append(badShares, decShares[0])
+	badShares = append(badShares, decShares[2])
+
+	_, err = pvGss.Recon(msp, badShares)
 	if err != nil {
 		fmt.Printf("bad share return LSSSRecon Error: %v\n", err)
 	}

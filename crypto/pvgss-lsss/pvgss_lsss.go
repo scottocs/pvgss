@@ -2,12 +2,14 @@
 package pvgss_lsss
 
 import (
+	"crypto/sha256"
 	"fmt"
 	bn128 "github.com/fentec-project/bn256"
 	lib "github.com/fentec-project/gofe/abe"
 	"github.com/fentec-project/gofe/data"
 	"github.com/fentec-project/gofe/sample"
 	"math/big"
+	"strings"
 )
 
 type GSS struct {
@@ -23,8 +25,6 @@ type GSSShare struct {
 type GrpGSS struct {
 	P  *big.Int
 	G1 *bn128.G1
-	G2 *bn128.G2
-	Gt *bn128.GT
 }
 type GrpGSSShare struct {
 	// represent shareholder
@@ -33,25 +33,50 @@ type GrpGSSShare struct {
 	value *bn128.G1
 }
 
-type PVGSS struct {
+type PvGSS struct {
 	P  *big.Int
 	G1 *bn128.G1
 	G2 *bn128.G2
 	Gt *bn128.GT
 }
 
+// NIZK proof of sharing
+type proof struct {
+	commit *bn128.G1
+	chal   *big.Int
+	resp   *big.Int
+}
+
+type PvGSSShare struct {
+	// represent shareholder
+	ID string
+
+	// share value
+	value *bn128.G1
+
+	// NIZK proof
+	proof proof
+}
+
 // NewGSS configures a new instance of the scheme.
-func NewGSS() *GSS {
+func NewGSS(order *big.Int) *GSS {
 	return &GSS{
-		P: bn128.Order,
+		P: order,
 	}
 }
 
 // NewGSS configures a new instance of the scheme.
-func NewGrpGSS() *GrpGSS {
+func NewGrpGSS(order *big.Int, gen1 *bn128.G1) *GrpGSS {
+	return &GrpGSS{
+		P:  order,
+		G1: gen1,
+	}
+}
+
+func NewPvGSS() *PvGSS {
 	gen1 := new(bn128.G1).ScalarBaseMult(big.NewInt(1))
 	gen2 := new(bn128.G2).ScalarBaseMult(big.NewInt(1))
-	return &GrpGSS{
+	return &PvGSS{
 		P:  bn128.Order,
 		G1: gen1,
 		G2: gen2,
@@ -244,4 +269,266 @@ func (a *GrpGSS) GrpLSSSRecon(msp *lib.MSP, shares []*GrpGSSShare) (*bn128.G1, e
 		}
 	}
 	return s, nil
+}
+
+func (a *PvGSS) Setup(holders []string) (map[string]*big.Int, map[string]*bn128.G1, map[string]*bn128.G2, error) {
+	n := len(holders)
+	if n <= 0 {
+		return nil, nil, nil, fmt.Errorf("number of shareholders must be greater than 0")
+	}
+
+	// Lists to store the generated private keys and public keys
+	skMap := make(map[string]*big.Int)
+	pk1Map := make(map[string]*bn128.G1)
+	pk2Map := make(map[string]*bn128.G2)
+
+	// Generate key pairs for each shareholder
+	for i := 0; i < n; i++ {
+		holder := holders[i]
+		// Generate a random private key sk
+		sampler := sample.NewUniform(a.P)
+		sk, err := sampler.Sample()
+
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		// Compute the corresponding public key pk1 = g1^sk, pk2 = g2^sk
+		pk1 := new(bn128.G1).ScalarMult(a.G1, sk)
+		pk2 := new(bn128.G2).ScalarMult(a.G2, sk)
+
+		// Store the keys in the maps with the holder's name as the key
+		skMap[holder] = sk
+		pk1Map[holder] = pk1
+		pk2Map[holder] = pk2
+
+		//check match of pk1 and pk2  e(pk1,g2) == e(g1, pk2)
+		left := bn128.Pair(pk1, a.G2)
+		right := bn128.Pair(a.G1, pk2)
+		if left.String() != right.String() {
+			return nil, nil, nil, fmt.Errorf("check pk1 and pk2 match fails")
+		}
+	}
+
+	return skMap, pk1Map, pk2Map, nil
+}
+
+func (a *PvGSS) Share(s *big.Int, msp *lib.MSP, pkMap map[string]*bn128.G1) ([]*PvGSSShare, error) {
+	n := len(msp.RowToAttrib)
+	if n != len(pkMap) {
+		return nil, fmt.Errorf("number of public keys must match the number of shareholders")
+	}
+
+	// Step 1: Secret sharing using GSS based on LSSS
+	gss := NewGSS(a.P)
+	shares, err := gss.LSSShare(s, msp)
+	if err != nil {
+		return nil, fmt.Errorf("error in GSSShare: %w", err)
+	}
+
+	// Step 2: shares C_i = pk_i^s_i
+	Ci := make([]*bn128.G1, n)
+	for i, share := range shares {
+		if share.value.Cmp(big.NewInt(0)) >= 0 {
+			Ci[i] = new(bn128.G1).ScalarMult(pkMap[share.ID], share.value)
+		} else {
+			Ci[i] = new(bn128.G1).ScalarMult(new(bn128.G1).Neg(pkMap[share.ID]), new(big.Int).Abs(share.value))
+		}
+	}
+
+	// Step 3: Generate a random scalar s'
+	sampler := sample.NewUniform(a.P)
+	sPrime, err := sampler.Sample()
+	if err != nil {
+		return nil, err
+	}
+
+	// Step 4: Secret sharing for s' using GSS
+	sharesPrime, err := gss.LSSShare(sPrime, msp)
+	if err != nil {
+		return nil, fmt.Errorf("error in GSSShare for s': %w", err)
+	}
+
+	// Step 5: Commitments C'_i = pk_i^s'_i
+	CiPrime := make([]*bn128.G1, n)
+	for i, sharePrime := range sharesPrime {
+		if sharePrime.value.Cmp(big.NewInt(0)) >= 0 {
+			CiPrime[i] = new(bn128.G1).ScalarMult(pkMap[sharePrime.ID], sharePrime.value)
+		} else {
+			CiPrime[i] = new(bn128.G1).ScalarMult(new(bn128.G1).Neg(pkMap[sharePrime.ID]), new(big.Int).Abs(sharePrime.value))
+		}
+	}
+
+	// Step 6: Compute Fiat-Shamir challenge c = H({C_i} || {C'_i})
+	preImage := ""
+	for i, ci := range Ci {
+		preImage += ci.String() + CiPrime[i].String()
+	}
+	h := sha256.Sum256([]byte(preImage))
+	hashNum := new(big.Int).SetBytes(h[:])
+	chal := new(big.Int).Mod(hashNum, a.P)
+
+	//another method to get chal
+	//for {
+	//	hashNum.SetBytes(h[:])
+	//	if hashNum.Cmp(a.P) == -1 {
+	//		break
+	//	}
+	//	h = sha256.Sum256(h[:])
+	//}
+
+	// Step 7: Compute responses resp_i = s'_i - c * s_i for each i
+	resp := make([]*big.Int, n)
+	for i := range shares {
+		resp[i] = new(big.Int).Sub(sharesPrime[i].value, new(big.Int).Mul(chal, shares[i].value))
+		resp[i].Mod(resp[i], a.P)
+	}
+
+	// Step 8: Generate PvGSSShare outputs with NIZK proof
+	pvShares := make([]*PvGSSShare, n)
+	for i, share := range shares {
+		pvShares[i] = &PvGSSShare{
+			ID:    share.ID,
+			value: Ci[i], // share value
+			proof: proof{
+				commit: CiPrime[i], // Commitment C'_i
+				chal:   chal,       // Fiat-Shamir challenge
+				resp:   resp[i],    // Response
+			},
+		}
+	}
+	return pvShares, nil
+}
+
+func (a *PvGSS) Verify(shares []*PvGSSShare, msp *lib.MSP, pkMap map[string]*bn128.G1) (bool, error) {
+	if len(shares) != msp.Mat.Rows() {
+		return false, fmt.Errorf("number of shares should match rows of access structure")
+	}
+	gssShares := make([]*GSSShare, len(shares))
+	for i, share := range shares {
+		c := share.value
+		cPrime := share.proof.commit
+		chal := share.proof.chal
+		resp := share.proof.resp
+
+		right := new(bn128.G1).Add(new(bn128.G1).ScalarMult(c, chal), new(bn128.G1).ScalarMult(pkMap[share.ID], resp))
+
+		//check equal of cPrime and right
+		if cPrime.String() != right.String() {
+			return false, fmt.Errorf("check nizk proof fails")
+		}
+		gssShares[i] = &GSSShare{
+			ID:    share.ID,
+			value: resp,
+		}
+	}
+
+	gss := NewGSS(a.P)
+	recon, err := gss.LSSSRecon(msp, gssShares)
+	if err != nil {
+		return false, fmt.Errorf("reconstruct by NIZK response value failed")
+	} else {
+		//reverse msp
+		numRows := len(msp.Mat)
+		for i := 0; i < numRows/2; i++ {
+			// swap
+			temp1 := msp.Mat[i]
+			msp.Mat[i] = msp.Mat[numRows-i-1]
+			msp.Mat[numRows-i-1] = temp1
+
+			// swap
+			temp2 := msp.RowToAttrib[i]
+			msp.RowToAttrib[i] = msp.RowToAttrib[numRows-i-1]
+			msp.RowToAttrib[numRows-i-1] = temp2
+		}
+		recon1, _ := gss.LSSSRecon(msp, gssShares)
+		if recon.Cmp(recon1) != 0 {
+			return false, fmt.Errorf("reconstruct by arbitrary authorized set should match")
+		}
+	}
+	return true, nil
+}
+
+func (a *PvGSS) PreRecon(share *PvGSSShare, sk *big.Int) (*bn128.G1, error) {
+	skInv := new(big.Int).ModInverse(sk, a.P)
+	if skInv == nil {
+		return nil, fmt.Errorf("no inverse for sk")
+	}
+	if new(big.Int).Mod(new(big.Int).Mul(sk, skInv), a.P).Cmp(big.NewInt(1)) != 0 {
+		return nil, fmt.Errorf("inverse for sk is wrong")
+	}
+
+	if skInv.Cmp(big.NewInt(0)) == -1 {
+		return nil, fmt.Errorf("inverse for sk is neg")
+	}
+
+	decShare := new(bn128.G1).ScalarMult(share.value, skInv)
+	return decShare, nil
+}
+func (a *PvGSS) KeyVrf(share *PvGSSShare, decShare *bn128.G1, pk2 *bn128.G2) (bool, error) {
+	left := bn128.Pair(decShare, pk2)
+	right := bn128.Pair(share.value, a.G2)
+	if left.String() != right.String() {
+		fmt.Println("left:", left.String())
+		fmt.Println("right:", right.String())
+		return false, fmt.Errorf("check decryption fails")
+	}
+	return true, nil
+}
+func (a *PvGSS) Recon(msp *lib.MSP, shares []*GrpGSSShare) (*bn128.G1, error) {
+	grpGss := NewGrpGSS(a.P, a.G1)
+	return grpGss.GrpLSSSRecon(msp, shares)
+}
+
+// evalBooleanExpr evaluates the Boolean expression
+// Replaces all holder variables with actual boolean values and evaluates the result.
+func evalBooleanExpr(expr string, vals map[string]bool) bool {
+	// Replace each holder variable with its actual value (true/false)
+	for key, val := range vals {
+		// Use strings.ReplaceAll to replace all occurrences of holderX
+		expr = strings.ReplaceAll(expr, key, fmt.Sprintf("%t", val))
+	}
+	// Replace logical operators AND and OR with Go's && and || operators
+	expr = strings.ReplaceAll(expr, "AND", "&&")
+	expr = strings.ReplaceAll(expr, "OR", "||")
+	// Evaluate the expression by using a helper function
+	result, _ := evaluate(expr)
+	return result
+}
+
+// evaluate evaluates a simple boolean expression after replacing logical operators
+// It uses fmt.Sscanf to convert the expression into a boolean result.
+func evaluate(expr string) (bool, error) {
+	var result bool
+	_, err := fmt.Sscanf(expr, "%t", &result)
+	if err != nil {
+		return false, err
+	}
+	return result, nil
+}
+
+// findSatisfyingSets finds all subsets of holders that satisfy the Boolean expression
+func findSatisfyingSets(expr string, holders []string) [][]string {
+	var resultSets [][]string
+
+	// Enumerate all possible boolean combinations for the holders
+	n := len(holders)
+	for i := 0; i < (1 << n); i++ {
+		// Construct the current boolean combination
+		vals := make(map[string]bool)
+		var currentSet []string
+		for j := 0; j < n; j++ {
+			// Determine the value of each holder (true/false) based on the combination
+			vals[holders[j]] = (i & (1 << j)) != 0
+			// If the value is true, add the holder to the current set
+			if vals[holders[j]] {
+				currentSet = append(currentSet, holders[j])
+			}
+		}
+		// Evaluate the expression with the current boolean values
+		if evalBooleanExpr(expr, vals) {
+			// If the expression is true, record the current subset
+			resultSets = append(resultSets, currentSet)
+		}
+	}
+	return resultSets
 }
