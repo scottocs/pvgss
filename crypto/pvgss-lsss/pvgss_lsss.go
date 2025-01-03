@@ -9,7 +9,6 @@ import (
 	"github.com/fentec-project/gofe/data"
 	"github.com/fentec-project/gofe/sample"
 	"math/big"
-	"strings"
 )
 
 type GSS struct {
@@ -163,6 +162,10 @@ func (a *GSS) LSSSRecon(msp *lib.MSP, shares []*GSSShare) (*big.Int, error) {
 	if err != nil {
 		return nil, err
 	}
+	//for debug
+	//for i, ci := range c {
+	//	fmt.Println("gssrecon c", i, "=", ci)
+	//}
 	s := big.NewInt(0)
 	for i, id := range goodHolders {
 		s.Add(s, new(big.Int).Mul(c[i], idToShare[id]))
@@ -477,58 +480,4 @@ func (a *PvGSS) KeyVrf(share *PvGSSShare, decShare *bn128.G1, pk2 *bn128.G2) (bo
 func (a *PvGSS) Recon(msp *lib.MSP, shares []*GrpGSSShare) (*bn128.G1, error) {
 	grpGss := NewGrpGSS(a.P, a.G1)
 	return grpGss.GrpLSSSRecon(msp, shares)
-}
-
-// evalBooleanExpr evaluates the Boolean expression
-// Replaces all holder variables with actual boolean values and evaluates the result.
-func evalBooleanExpr(expr string, vals map[string]bool) bool {
-	// Replace each holder variable with its actual value (true/false)
-	for key, val := range vals {
-		// Use strings.ReplaceAll to replace all occurrences of holderX
-		expr = strings.ReplaceAll(expr, key, fmt.Sprintf("%t", val))
-	}
-	// Replace logical operators AND and OR with Go's && and || operators
-	expr = strings.ReplaceAll(expr, "AND", "&&")
-	expr = strings.ReplaceAll(expr, "OR", "||")
-	// Evaluate the expression by using a helper function
-	result, _ := evaluate(expr)
-	return result
-}
-
-// evaluate evaluates a simple boolean expression after replacing logical operators
-// It uses fmt.Sscanf to convert the expression into a boolean result.
-func evaluate(expr string) (bool, error) {
-	var result bool
-	_, err := fmt.Sscanf(expr, "%t", &result)
-	if err != nil {
-		return false, err
-	}
-	return result, nil
-}
-
-// findSatisfyingSets finds all subsets of holders that satisfy the Boolean expression
-func findSatisfyingSets(expr string, holders []string) [][]string {
-	var resultSets [][]string
-
-	// Enumerate all possible boolean combinations for the holders
-	n := len(holders)
-	for i := 0; i < (1 << n); i++ {
-		// Construct the current boolean combination
-		vals := make(map[string]bool)
-		var currentSet []string
-		for j := 0; j < n; j++ {
-			// Determine the value of each holder (true/false) based on the combination
-			vals[holders[j]] = (i & (1 << j)) != 0
-			// If the value is true, add the holder to the current set
-			if vals[holders[j]] {
-				currentSet = append(currentSet, holders[j])
-			}
-		}
-		// Evaluate the expression with the current boolean values
-		if evalBooleanExpr(expr, vals) {
-			// If the expression is true, record the current subset
-			resultSets = append(resultSets, currentSet)
-		}
-	}
-	return resultSets
 }
