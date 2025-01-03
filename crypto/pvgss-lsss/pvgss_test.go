@@ -143,13 +143,13 @@ func TestPvGSS(t *testing.T) {
 	GrpShare := new(bn128.G1).ScalarMult(pvGss.G1, s)
 
 	//share
-	pvShares, err := pvGss.Share(s, msp, pk1Map)
+	pvShares, sHat, err := pvGss.Share(s, msp, pk1Map)
 	if err != nil {
 		t.Fatalf("pvgss failed to share: %v\n", err)
 	}
 
 	//share verify
-	isShareValid, err := pvGss.Verify(pvShares, msp, pk1Map)
+	isShareValid, err := pvGss.Verify(pvShares, msp, sHat, pk1Map)
 	if err != nil || isShareValid == false {
 		t.Fatalf("pvgss share verify failed: %v\n", err)
 	}
@@ -181,9 +181,6 @@ func TestPvGSS(t *testing.T) {
 	goodShares := make([]*GrpGSSShare, 0)
 	goodShares = append(goodShares, decShares[0])
 	goodShares = append(goodShares, decShares[1])
-	goodShares = append(goodShares, decShares[2])
-	goodShares = append(goodShares, decShares[3])
-	goodShares = append(goodShares, decShares[4])
 	reconValue, err := pvGss.Recon(msp, goodShares)
 
 	assert.Equal(t, GrpShare.String(), reconValue.String())

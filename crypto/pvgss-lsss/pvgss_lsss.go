@@ -315,17 +315,17 @@ func (a *PvGSS) Setup(holders []string) (map[string]*big.Int, map[string]*bn128.
 	return skMap, pk1Map, pk2Map, nil
 }
 
-func (a *PvGSS) Share(s *big.Int, msp *lib.MSP, pkMap map[string]*bn128.G1) ([]*PvGSSShare, error) {
+func (a *PvGSS) Share(s *big.Int, msp *lib.MSP, pkMap map[string]*bn128.G1) ([]*PvGSSShare, *big.Int, error) {
 	n := len(msp.RowToAttrib)
 	if n != len(pkMap) {
-		return nil, fmt.Errorf("number of public keys must match the number of shareholders")
+		return nil, nil, fmt.Errorf("number of public keys must match the number of shareholders")
 	}
 
 	// Step 1: Secret sharing using GSS based on LSSS
 	gss := NewGSS(a.P)
 	shares, err := gss.LSSShare(s, msp)
 	if err != nil {
-		return nil, fmt.Errorf("error in GSSShare: %w", err)
+		return nil, nil, fmt.Errorf("error in GSSShare: %w", err)
 	}
 
 	// Step 2: shares C_i = pk_i^s_i
@@ -342,13 +342,13 @@ func (a *PvGSS) Share(s *big.Int, msp *lib.MSP, pkMap map[string]*bn128.G1) ([]*
 	sampler := sample.NewUniform(a.P)
 	sPrime, err := sampler.Sample()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Step 4: Secret sharing for s' using GSS
 	sharesPrime, err := gss.LSSShare(sPrime, msp)
 	if err != nil {
-		return nil, fmt.Errorf("error in GSSShare for s': %w", err)
+		return nil, nil, fmt.Errorf("error in GSSShare for s': %w", err)
 	}
 
 	// Step 5: Commitments C'_i = pk_i^s'_i
@@ -370,6 +370,7 @@ func (a *PvGSS) Share(s *big.Int, msp *lib.MSP, pkMap map[string]*bn128.G1) ([]*
 	hashNum := new(big.Int).SetBytes(h[:])
 	chal := new(big.Int).Mod(hashNum, a.P)
 
+	sHat := new(big.Int).Mod(new(big.Int).Sub(sPrime, new(big.Int).Mul(chal, s)), a.P)
 	//another method to get chal
 	//for {
 	//	hashNum.SetBytes(h[:])
@@ -399,10 +400,10 @@ func (a *PvGSS) Share(s *big.Int, msp *lib.MSP, pkMap map[string]*bn128.G1) ([]*
 			},
 		}
 	}
-	return pvShares, nil
+	return pvShares, sHat, nil
 }
 
-func (a *PvGSS) Verify(shares []*PvGSSShare, msp *lib.MSP, pkMap map[string]*bn128.G1) (bool, error) {
+func (a *PvGSS) Verify(shares []*PvGSSShare, msp *lib.MSP, sHat *big.Int, pkMap map[string]*bn128.G1) (bool, error) {
 	if len(shares) != msp.Mat.Rows() {
 		return false, fmt.Errorf("number of shares should match rows of access structure")
 	}
@@ -430,22 +431,8 @@ func (a *PvGSS) Verify(shares []*PvGSSShare, msp *lib.MSP, pkMap map[string]*bn1
 	if err != nil {
 		return false, fmt.Errorf("reconstruct by NIZK response value failed")
 	} else {
-		//reverse msp
-		numRows := len(msp.Mat)
-		for i := 0; i < numRows/2; i++ {
-			// swap
-			temp1 := msp.Mat[i]
-			msp.Mat[i] = msp.Mat[numRows-i-1]
-			msp.Mat[numRows-i-1] = temp1
-
-			// swap
-			temp2 := msp.RowToAttrib[i]
-			msp.RowToAttrib[i] = msp.RowToAttrib[numRows-i-1]
-			msp.RowToAttrib[numRows-i-1] = temp2
-		}
-		recon1, _ := gss.LSSSRecon(msp, gssShares)
-		if recon.Cmp(recon1) != 0 {
-			return false, fmt.Errorf("reconstruct by arbitrary authorized set should match")
+		if recon.Cmp(sHat) != 0 {
+			return false, fmt.Errorf("reconstruct s hat don't match")
 		}
 	}
 	return true, nil
