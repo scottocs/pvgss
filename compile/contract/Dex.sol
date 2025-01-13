@@ -119,6 +119,12 @@ contract Dex
 		require (success);
 	}
 
+    // function negate(G1Point memory p) public payable returns (G1Point memory) {
+    //     if (p.X == 0 && p.Y == 0)
+    //         return G1Point(0, 0);
+    //     return G1Point(p.X, FIELD_MODULUS - (p.Y % FIELD_MODULUS));
+    // }
+
 	/// return the result of computing the pairing check
 	/// e(p1[0], p2[0]) *  .... * e(p1[n], p2[n]) == 1
 	/// For example pairing([P1(), P1().negate()], [P2(), P2()]) should
@@ -149,15 +155,15 @@ contract Dex
 	}
 
 	/// Convenience method for a pairing check for two pairs.
-//	function pairingProd2(G1Point memory a1, G2Point memory a2, G1Point memory b1, G2Point memory b2) view internal returns (bool) {
-//		G1Point[] memory p1 = new G1Point[](2);
-//		G2Point[] memory p2 = new G2Point[](2);
-//		p1[0] = a1;
-//		p1[1] = b1;
-//		p2[0] = a2;
-//		p2[1] = b2;
-//		return pairing(p1, p2);
-//	}
+	function pairingProd2(G1Point memory a1, G2Point memory a2, G1Point memory b1, G2Point memory b2) view internal returns (bool) {
+		G1Point[] memory p1 = new G1Point[](2);
+		G2Point[] memory p2 = new G2Point[](2);
+		p1[0] = a1;
+		p1[1] = b1;
+		p2[0] = a2;
+		p2[1] = b2;
+		return pairing(p1, p2);
+	}
 
 	function pairingProd4(
 			G1Point memory a1, G2Point memory a2,
@@ -412,6 +418,7 @@ contract Dex
         require(success);
     }
 
+
     function _fromJacobian(
         uint256 pt1xx, uint256 pt1xy,
         uint256 pt1yx, uint256 pt1yy,
@@ -587,9 +594,278 @@ contract Dex
         return G1Point(p.X, FIELD_MODULUS - (p.Y % FIELD_MODULUS));
     }
 
+    function checkkey_eq2(
+		G2Point memory EK1Arr,
+		G2Point memory EK1pArr,
+		uint256 c,
+		uint256 w3
+	)  
+	public payable
+		returns (bool)
+	{
+		ECTwistPoint memory tmp1;
+
+		(tmp1.xx,tmp1.xy,tmp1.yx,tmp1.yy)=ECTwistMul(c,EK1Arr.X[1],EK1Arr.X[0],EK1Arr.Y[1],EK1Arr.Y[0]);
+
+		ECTwistPoint memory tmp2;
+		(tmp2.xx,tmp2.xy,tmp2.yx,tmp2.yy)=ECTwistAdd(EK1pArr.X[1],EK1pArr.X[0],EK1pArr.Y[1],EK1pArr.Y[0],tmp1.xx,tmp1.xy,tmp1.yx,tmp1.yy);
+		
+		(tmp1.xx,tmp1.xy,tmp1.yx,tmp1.yy)=ECTwistMul(w3, G2.X[1], G2.X[0], G2.Y[1], G2.Y[0]);  //G2 generator
+
+		require(tmp1.xx==tmp2.xx && tmp1.xy==tmp2.xy && tmp1.yx==tmp2.yx && tmp1.yy==tmp2.yy);
+		return (true);
+	}
+    G1Point Checkkeyresult;
+	function Checkkey(
+		G1Point[][] memory p1,
+		G2Point[][] memory p2, 
+		uint256[][] memory tmp,
+        string  memory gid, 
+        string[]  memory attr,
+        G1Point memory pk)
+    public payable returns (G1Point memory Checkkeyresult)
+	{
+        for (uint256 i=0;i<p1.length;i++){
+            require(equals(g1add(p1[i][1],g1mul(p1[i][0],tmp[i][0])),
+                g1add(g1add(g1mul(pk, tmp[i][1]),g1mul(HashToG1(gid), tmp[i][2])), g1mul(HashToG1(attr[i]), tmp[i][3]))),"eq1");  //eq1 TODO not work
+            require(checkkey_eq2(p2[i][0],p2[i][1],tmp[i][0],tmp[i][3]),"eq2");  //eq2
+
+ 			 require(pairingProd4(pk,p2[i][2],HashToG1(gid),p2[i][3],HashToG1(attr[i]),p2[i][0],negate(p1[i][1]), P2()),"eq3");  //eq3
+		}
+	    return Checkkeyresult;
+	}
+
+    function Checkkeyp(
+        G1Point[][] memory p1,
+        G2Point[][] memory p2,
+        uint256[][] memory tmp,
+        string  memory gid,
+        string[]  memory attr,
+        G1Point memory pk)
+    public
+    returns (bool)
+    {
+        G1Point memory hg1;
+        G1Point memory hgid= HashToG1(gid);
+        for (uint256 i=0;i<p1.length;i++){
+            hg1= HashToG1(attr[i]);
+            require(equals(g1add(p1[i][1],g1mul(p1[i][0],tmp[i][0])),
+                g1add(g1add(g1mul(pk, tmp[i][1]),g1mul(hgid, tmp[i][2])), g1mul(hg1, tmp[i][3]))),"eq1");  //eq1 TODO not work
+            require(equals(g1mul(G1,tmp[i][3]), g1add(p1[i][4],g1mul(p1[i][2],tmp[i][0]))));  //eq2
+            G1Point[] memory p1Arr = new G1Point[](2);
+		    G2Point[] memory p2Arr = new G2Point[](2);
+            p1Arr[0] = negate(p1[i][2]);
+            p1Arr[1] = G1;
+            p2Arr[0] = G2;
+            p2Arr[1] = p2[i][0];
+            require(pairing(p1Arr, p2Arr));  //eq3
+//            require(pairingProd2(negate(p1[i][2]), G2, G1, p2[i][0]));  //eq3
+            G1Point[] memory pp1= new G1Point[](4);
+            pp1[0]=pk;
+            pp1[1]=hgid;
+            pp1[2]=hg1;
+            pp1[3]=negate(p1[i][1]);
+            G2Point[] memory pp2= new G2Point[](4);
+            pp2[0]=p2[i][2];
+            pp2[1]=p2[i][3];
+            pp2[2]=p2[i][0];
+            pp2[3]=G2;
+            require(pairing(pp1, pp2));
+//            pairingProd4(pk,p2[i][2],hgid,p2[i][3],hg1,p2[i][0],negate(p1[i][1]), G2));  //eq4
+        }
+        return true;
+    }
+
+
+    // ========================== PVGSS-SSS Verification ===============================
+
+    struct Node {
+        bool IsLeaf;
+        uint256[] Children; // Child nodes ID
+        uint256 Childrennum; // Child nodes numbers
+        uint256 T; //Threshold
+        uint256 Idx; //The local index of the node under its parent
+    }
+
+    struct Prf {
+        G1Point[] Cp;
+        uint256 Xc;
+        uint256 Shat;
+        uint256[] ShatArray;
+    }
+
+    bool[] VerifyResult;
+    bool[] KeyVerifyResult;
+    // Node2[] path;
+    Node public path;
+    Prf prf;
+
+    mapping(uint256 => Node) public nodes;
+
+    // ===== Node =====
+    // Create a node
+    function createNode(uint256 parentIdx, uint256 idx, bool isLeaf, uint256 childNum, uint256 t) public payable {
+        // Node's ID = parents' ID * 100 + child's ID
+        uint256 nodeId = parentIdx * 100 + idx;
+        Node storage newNode = nodes[nodeId];
+        newNode.IsLeaf = isLeaf;
+        newNode.Childrennum = childNum;
+        newNode.T = t;
+        newNode.Idx = idx;
+    }
+
+    // add child nodes for some node
+    function addChild(uint256 parentIdx,uint256[] memory childIdxs) public payable {
+        uint256 parentNodeId = parentIdx;
+        require(nodes[parentNodeId].Childrennum >= childIdxs.length,"Too many child");
+        Node storage parentNode = nodes[parentNodeId];
+        for (uint256 i = 0; i < childIdxs.length; i++) {
+            uint256 childNodeId = parentIdx * 100 + childIdxs[i];
+            parentNode.Children.push(childNodeId);
+        }
+    }
+
+    // function getChildren(uint256 nodeId) public view returns (uint256[] memory) {
+    //     return nodes[nodeId].Children;
+    // }
+
+    // function getNodeData(uint256 nodeId) public view returns (bool, uint256, uint256, uint256) {
+    //     Node storage node = nodes[nodeId];
+    //     return (node.IsLeaf,node.Childrennum,node.T,node.Idx);
+    // }
+
+    // ===== SSS and GSS =====
+    function evaluatePolynomial(uint256 x,uint256[] memory coefficients) internal returns (uint256) {
+        uint256 result = coefficients[0]; 
+        uint256 xPower = x;
+        for (uint256 i = 1; i < coefficients.length; i++) {
+            uint256 term = mulmod(coefficients[i], xPower, GEN_ORDER);
+
+            result = addmod(result, term, GEN_ORDER);
+            
+            // xPoewr = x^i
+            xPower = mulmod(xPower, x, GEN_ORDER);
+        }
+        return result;
+    }
+
+    function PrecomputeLagrangeCoefficients(uint256[] memory I) internal view returns (uint256[] memory) {
+        uint256 k = I.length;
+        uint256[] memory lambdas = new uint256[](k);
+        // Compute all Lagrange coefficients
+        for(uint256 i = 0; i < k; i++) {
+            uint256 lambda_i = 1;
+            for(uint256 j = 0; j < k; j++) {
+                if(i != j) {
+                    uint256 num = I[j]; // Negate I[j] modulo ORDER
+                    uint256 den = submod2(I[j], I[i], GEN_ORDER);
+                    // compute modular inverse of den
+                    uint256 den_inv = _modInv(den,GEN_ORDER);
+                    lambda_i = mulmod(lambda_i, num, GEN_ORDER);
+                    lambda_i = mulmod(lambda_i, den_inv, GEN_ORDER);
+                }
+            }
+            lambdas[i] = lambda_i;
+        }
+        return lambdas;
+    }
+
+    function SSSRecon(uint256[] memory Q, uint256[] memory I) internal view returns (uint256 secret) {
+        uint256 k = I.length;
+        uint256[] memory lambdas = new uint256[](k);
+        lambdas = PrecomputeLagrangeCoefficients(I);
+        uint256 secret = 0;
+        for(uint256 i = 0; i < k; i++) {
+            uint256 lambda_i = lambdas[i];
+            uint256 temp = mulmod(Q[i], lambda_i, GEN_ORDER);
+            secret = addmod(secret, temp, GEN_ORDER);
+        }
+        return secret;
+    }
+
+    function GSSRecon(uint256 nodeId,uint256[] memory Q, uint256 startIdx) public view returns (uint256, uint256) {
+        // get current node
+        Node storage AA = nodes[nodeId];
+
+        // require(startIdx < Q.length,"Start index out of bounds");
+
+        if(AA.IsLeaf) {
+            // if(Q.length == 0) {
+            //     // recSecret = 0;
+            //     return (0,0);
+            // }
+            // recSecret = Q[startIdx];
+            return (Q[startIdx],AA.Idx);
+        }
+        // child nodes
+        uint256[] memory childShares = new uint256[](AA.T);
+        uint256[] memory childIdx = new uint256[](AA.T);
+
+        for(uint256 i = 0; i < AA.T; i++) {
+            uint256 childNodeId = AA.Children[i];
+            uint256 share;
+            uint256 childIdxValue;
+            (share,childIdxValue) = GSSRecon(childNodeId, Q, startIdx + i);
+
+            childShares[i] = share;
+            childIdx[i] = childIdxValue;
+        }
+        require(childShares.length >= AA.T,"Insuficient shares for reconstruction");
+
+        // recSecret = SSSRecon(childShares, childIdx);
+        return (SSSRecon(childShares, childIdx),AA.Idx);
+    }
+
+    // ===== PVGSS-SSS Verification =====
+    function PVGSSVerify(G1Point[] memory C,G1Point[] memory PK,uint256 nodeId,uint256[] memory Q, uint256 startIdx) public payable returns (bool) {
+        for(uint i = 0; i < prf.ShatArray.length;i++) {
+            G1Point memory left = prf.Cp[i];
+            G1Point memory temp1 = g1mul(C[i],prf.Xc);
+            G1Point memory temp2 = g1mul(PK[i],prf.ShatArray[i]);
+            G1Point memory right = g1add(temp1,temp2);
+            if (!equals(left,right)) {
+                VerifyResult.push(false);
+                return false;
+            }
+            (uint256 recovershat, uint256 idx) = GSSRecon(nodeId,Q,startIdx);
+            if (prf.Shat != recovershat) {
+                VerifyResult.push(false);
+                return false;
+            }
+            VerifyResult.push(true);
+        }
+        return true;
+    }
+
+    function GetVerifyResult() public view returns (bool []memory) {
+        return VerifyResult;
+    }
+
+    // Upload Prfs
+    function UploadProof(G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray) public payable {
+        for (uint i = 0; i < shatArray.length;i++){
+            prf.Cp.push(cp[i]);
+            prf.ShatArray.push(shatArray[i]);
+        }
+        prf.Xc = xc;
+        prf.Shat = shat;
+    }
+
+    function PVGSSKeyVrf(G1Point memory C, G1Point memory decShare, G2Point memory pk2,G2Point memory g2) public payable returns (bool) {
+        bool isKeyValid = pairingProd2(decShare, pk2, negate(C), g2);
+        KeyVerifyResult.push(isKeyValid);
+        return isKeyValid;
+    }
+
+    function GetKeyVrfResult() public view returns (bool []memory) {
+        return KeyVerifyResult;
+    }
+
+    // ========================== PVGSS-SSS Verification End ===============================
+
+
 	bytes[] opstack;
 	bytes[] valstack;
-
 
     mapping (string => uint256) public expects;
     mapping (address => mapping(string => uint256)) public pool;
@@ -634,8 +910,6 @@ contract Dex
 		
 	    return true;
 	}
-
-
 
 	function stringEqual(
 		string memory a,
