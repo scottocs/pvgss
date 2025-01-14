@@ -1,4 +1,4 @@
-module basics
+module pvgss
 
 go 1.21.1
 
