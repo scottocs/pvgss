@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"log"
 	"math/big"
-	"pvgss/compile/contract"
+
+	// "pvgss/compile/contract"
+	"pvgss/compile/contract/Dex"
 
 	// "pvgss/crypto/rwdabe"
 	"pvgss/utils"
@@ -17,6 +19,7 @@ import (
 
 	// bn128 "github.com/fentec-project/bn256"
 	bn128 "pvgss/bn128"
+
 	// lib "github.com/fentec-project/gofe/abe"
 	// "pvgss/crypto/pvgss-sss/sss"
 	pvgss_lsss "pvgss/crypto/pvgss-lsss2/pvgss_lsss"
@@ -29,7 +32,7 @@ type ACJudge struct {
 	ACS   string   `json:"acs"`
 }
 
-func G1ToPoint(point *bn128.G1) contract.DexG1Point {
+func G1ToPoint(point *bn128.G1) Dex.DexG1Point {
 	// Marshal the G1 point to get the X and Y coordinates as bytes
 	pointBytes := point.Marshal()
 	//fmt.Println(point.Marshal())
@@ -38,22 +41,22 @@ func G1ToPoint(point *bn128.G1) contract.DexG1Point {
 	x := new(big.Int).SetBytes(pointBytes[:32])
 	y := new(big.Int).SetBytes(pointBytes[32:64])
 
-	g1Point := contract.DexG1Point{
+	g1Point := Dex.DexG1Point{
 		X: x,
 		Y: y,
 	}
 	return g1Point
 }
 
-func G1sToPoints(num int, points []*bn128.G1) []contract.DexG1Point {
-	g1Points := make([]contract.DexG1Point, num)
+func G1sToPoints(num int, points []*bn128.G1) []Dex.DexG1Point {
+	g1Points := make([]Dex.DexG1Point, num)
 	for i := 0; i < num; i++ {
 		g1Points[i] = G1ToPoint(points[i])
 	}
 	return g1Points
 }
 
-func G2ToPoint(point *bn128.G2) contract.DexG2Point {
+func G2ToPoint(point *bn128.G2) Dex.DexG2Point {
 	// Marshal the G1 point to get the X and Y coordinates as bytes
 	pointBytes := point.Marshal()
 	//fmt.Println(point.Marshal())
@@ -64,7 +67,7 @@ func G2ToPoint(point *bn128.G2) contract.DexG2Point {
 	b1 := new(big.Int).SetBytes(pointBytes[64:96])
 	b2 := new(big.Int).SetBytes(pointBytes[96:128])
 
-	g2Point := contract.DexG2Point{
+	g2Point := Dex.DexG2Point{
 		X: [2]*big.Int{a1, a2},
 		Y: [2]*big.Int{b1, b2},
 	}
