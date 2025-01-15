@@ -969,34 +969,522 @@ contract Dex
     	uint256 yy;
 	}
 
-
     //参考 https://github.com/Uniswap/v2-core/tree/master
     
-    // 存储每种代币的余额
-    mapping(address => uint256) public balances;
+    // store contract balance   users A token B balance: balances[userA addr][tokenB addr]
+    mapping(address => mapping(address => uint256)) public balances;
 
-    // 事件，用于记录代币接收
+    // store freeze_balance   
+    mapping(address => mapping(uint256 => mapping(address => uint256))) public freeze_balances;
+
+    // store staked eth
+    mapping(address => uint256) public stakedETH;
+
+    // watcher list
+    address[] public watcherList;
+
+    // store pubkey of users
+    mapping(address => G1Point) public pubkey1;
+
+    mapping(bytes32 => address) public pubkeyhashToAddress;
+
+    //TODO:check
+    mapping(address => G2Point) private pubkey2;
+
+    uint constant MINIMAL_EXCHANGER_STAKE = 1 ether; 
+    uint constant MINIMAL_WATCHER_STAKE = 1 ether; 
+
+    struct Order {
+        address seller;
+        address tokenSell; // Token to sell (e.g., ETH)
+        uint256 amountSell; // Amount to sell (e.g., 2 ETH)
+        address tokenBuy; // Token to buy (e.g., USDT)
+        uint256 amountBuy; // Amount to buy (e.g., 7000 USDT)
+        bool isActive;
+    }
+    // Store orders
+    mapping(uint256 => Order) public orders;
+    uint256 public nextOrderId;
+
+
+    // State variable to track session state
+    // Active: session created  Active1:one execute swap1  Active2: two execute swap1
+    // Active3: one execute swap2
+    enum SessionState { Active, Active1, Active2, Active3, Complain, Success, Failure }
+    struct Session {
+        SessionState state; // Session state
+        address[] exchangers; // seller as exchanger[0], buyer as exchanger[1] in the session
+        address[] watchers; // Watchers in the session
+        mapping(address => G1Point) shares; // decshare collect
+        mapping(address => G1Point) Cshares1;
+        mapping(address => G1Point) Cshares2;
+        uint256 expiration1; // First expiration time
+        uint256 expiration2; // Second expiration time
+        bool seller_swap1;  //true
+        bool buyer_swap1;   //true
+    }
+    //Store sessions
+    mapping(uint256 => Session) public sessions;
+
+
+    // event
     event TokensReceived(address indexed token, address indexed from, uint256 amount);
+    event TokensFrozen(address indexed token, address indexed from, uint256 amount, uint256 sessionId);
+    event TokensSwapped(address indexed token, address indexed from, uint256 amount, uint256 sessionId);
+    event ComplaintFiled(address indexed complainer, uint256 sessionId);
+    event SessionStateUpdated(uint256 sessionId, SessionState state);
+    event UserNotified(uint256 sessionId, address indexed user);
+    event OrderCreated(uint256 orderId, address indexed seller, address tokenSell, uint256 amountSell, address tokenBuy, uint256 amountBuy);
+    event Incentivized(address indexed exchanger, uint256 amount);
+    event Penalized(address indexed exchanger, uint256 amount);
+    event SessionCreated(uint256 indexed orderId, address seller, address buyer, address[3] watchers, uint256 expiration1, uint256 expiration2);
 
-    // 接收 ERC20 代币的函数
-    function receiveTokens(address token, uint256 amount) external {
-        require(amount > 0, "Amount must be greater than 0");
 
-        // 调用 transferFrom 将代币从调用者转移到合约
-        IERC20(token).transferFrom(msg.sender, address(this), amount);
+    modifier onlyExchanger(uint256 id) {
+        require(msg.sender == sessions[id].exchangers[0] || msg.sender == sessions[id].exchangers[1], "Invalid exchanger");
+        _;
+    }
+
+    //register pubkey
+    function register(G1Point memory _pubkey1, G2Point memory _pubkey2) external {
+        pubkey1[msg.sender] = _pubkey1;
+        pubkeyhashToAddress[g1PointToBytes32(_pubkey1)] = msg.sender;
+        pubkey2[msg.sender] = _pubkey2;
+    }
+
+    // Deposit ERC20 tokens into the contract
+    function deposit(address token, uint256 amount) external {
+        IERC20 erc20Token = IERC20(token);
+
+        //check allowance before transferFrom
+        uint256 _allow = erc20Token.allowance(msg.sender, address(this));
+        require(amount > 0, "Deposit amount must be greater than 0");
+        require(amount <= _allow, "Insufficient allowance");
         
-        // 更新余额
-        balances[token] += amount;
+        //update balance
+        balances[msg.sender][token] += amount;
 
-        // 触发事件
+        //transfer from sender to this contract
+        erc20Token.transferFrom(msg.sender, address(this), amount);
+
         emit TokensReceived(token, msg.sender, amount);
     }
 
-    // 查询合约中存储的代币余额
-    function getTokenBalance(address token) external view returns (uint256) {
-        return IERC20(token).balanceOf(address(this));
+    // Withdraw tokens from the contract
+    function withdraw(address token, uint256 amount) external {
+        require(balances[msg.sender][token] >= amount, "Insufficient balance");
+
+        balances[msg.sender][token] -= amount;
+
+        //withdraw to sender
+        IERC20(token).transfer(msg.sender, amount);
     }
 
-    
+    // stake ETH
+    function stakeETH(bool asWatcher) external payable {
+        require(msg.value > 0, "Must send ETH to stake");
+        if (asWatcher) {
+            watcherList.push(msg.sender);
+        }
+
+        stakedETH[msg.sender] += msg.value;
+    }
+
+    // unstake ETH
+    function unstakeETH(uint256 amount) external {
+        require(stakedETH[msg.sender] >= amount, "Insufficient staked ETH");
+        stakedETH[msg.sender] -= amount;
+        payable(msg.sender).transfer(amount);
+    }
+
+    // Create an order
+    function createOrder(address tokenSell, uint256 amountSell, address tokenBuy, uint256 amountBuy) external returns (uint256){
+        require(balances[msg.sender][tokenSell] >= amountSell, "Insufficient balance to create order");
+
+        // Freeze seller's funds
+        balances[msg.sender][tokenSell] -= amountSell;
+        freeze_balances[msg.sender][nextOrderId][tokenSell] += amountSell;
+
+        // Create the order
+        orders[nextOrderId] = Order({
+            seller: msg.sender,
+            tokenSell: tokenSell,
+            amountSell: amountSell,
+            tokenBuy: tokenBuy,
+            amountBuy: amountBuy,
+            isActive: true
+        });
+
+        emit TokensFrozen(tokenSell, msg.sender, amountSell, nextOrderId);
+        emit OrderCreated(nextOrderId, msg.sender, tokenSell, amountSell, tokenBuy, amountBuy);
+
+        // Return the order ID
+        uint256 currentOrderId = nextOrderId;
+        nextOrderId++; // Increment for the next order
+
+        return currentOrderId;
+    }
+
+    // Cancel an order
+    function cancelOrder(uint256 orderId) external {
+        Order storage order = orders[orderId];
+
+        // Check if the order exists and is active
+        require(order.isActive, "Order is not active or does not exist");
+
+        // Check if the caller is the seller
+        require(msg.sender == order.seller, "Only the seller can cancel the order");
+
+        // Mark the order as inactive
+        order.isActive = false;
+
+        // Unfreeze the seller's funds
+        balances[msg.sender][order.tokenSell] += order.amountSell;
+        freeze_balances[msg.sender][orderId][order.tokenSell] -= order.amountSell;
+    }
+
+    // Accept order
+    function acceptOrder(uint256 orderId) external {
+        Order storage _order = orders[orderId];
+        require(_order.isActive, "Order is not active");
+        require(balances[msg.sender][_order.tokenBuy] >= _order.amountBuy, "Insufficient balance to accept order");
+
+        // Freeze buyer's funds
+        balances[msg.sender][_order.tokenBuy] -= _order.amountBuy;
+        freeze_balances[msg.sender][orderId][_order.tokenBuy] += _order.amountBuy;
+
+        // Mark order as accepted
+        _order.isActive = false;
+
+        // Initialize the session
+        Session storage newSession = sessions[orderId];
+        newSession.state = SessionState.Active; // Initial state
+        newSession.exchangers.push(_order.seller); // Add seller (Alice)
+        newSession.exchangers.push(msg.sender); // Add buyer (Bob)
+        newSession.expiration1 = block.timestamp + 3 minutes; // Set expiration1
+        newSession.expiration2 = block.timestamp + 10 minutes; // Set expiration2
+        newSession.seller_swap1 = false;
+        newSession.buyer_swap1 = false;
+        
+        //add 3 watchers
+        uint256 randomIndex = uint256(keccak256(abi.encodePacked(block.timestamp, orderId)));
+        address[3] memory selectedWatchers;
+        for (uint256 i = 0; i < 3; i++) {
+            selectedWatchers[i] = watcherList[(randomIndex + i) % watcherList.length];
+            newSession.watchers.push(selectedWatchers[i]);
+        }
+        
+        emit TokensFrozen(_order.tokenBuy, msg.sender, _order.amountBuy, orderId);
+
+        emit SessionCreated(orderId, _order.seller, msg.sender, selectedWatchers, newSession.expiration1, newSession.expiration2);
+    }
+
+    //session swap1: shares validity check
+    function swap1(uint256 id, G1Point[] memory C, G1Point[] memory PK, uint256 nodeId,uint256[] memory Q, uint256 startIdx) external onlyExchanger(id){
+        Session storage session = sessions[id];
+
+        // Check session state
+        require(session.state == SessionState.Active || session.state == SessionState.Active1, "Session state is invalid for swap1");
+
+        // Check Expiration1
+        require(block.timestamp <= session.expiration1, "Session is expired t1");
+
+        // Check stake
+        require(stakedETH[msg.sender] >= MINIMAL_EXCHANGER_STAKE, "Insufficient stake");
+
+        // Check validity of shares PVGSSVerify()
+        if (PVGSSVerify(C, PK, nodeId, Q, startIdx)) {
+            if (session.state == SessionState.Active) {
+                session.state = SessionState.Active1;
+            } else if (session.state == SessionState.Active1) {
+                session.state = SessionState.Active2;
+            }
+
+            // Store C_i
+            if (msg.sender == session.exchangers[0]) {
+                for (uint i = 0; i < PK.length; i++) {
+                    address user = pubkeyhashToAddress[g1PointToBytes32(PK[i])];
+                    session.Cshares1[user] = C[i];
+                }
+                session.seller_swap1 = true;
+            } else {
+                for (uint i = 0; i < PK.length; i++) {
+                    address user = pubkeyhashToAddress[g1PointToBytes32(PK[i])];
+                    session.Cshares2[user] = C[i];
+                }
+                session.buyer_swap1 = true;
+            }
+        }
+
+        // Update session state based on current state
+        emit SessionStateUpdated(id, session.state);
+    }
+
+    function swap2(uint256 id, G1Point memory decShare) external onlyExchanger(id){
+        Session storage session = sessions[id];
+        // Check session state
+        require(session.state == SessionState.Active2 || session.state == SessionState.Active3, "Session state is invalid for swap2");
+
+        // Check stake
+        require(stakedETH[msg.sender] >= MINIMAL_EXCHANGER_STAKE, "Insufficient stake");
+
+        // Invoke PVGSSKeyVrf and store decShare
+        if (PVGSSKeyVrf(session.Cshares1[msg.sender], decShare, pubkey2[msg.sender], G2)){
+            session.shares[msg.sender] = decShare;
+            if (session.state == SessionState.Active2) {
+                session.state = SessionState.Active3;
+            } else if (session.state == SessionState.Active3) {
+                session.state = SessionState.Success;
+            }
+        }
+    }
+
+    //complaint
+    function complain(uint256 id) external {
+        Session storage session = sessions[id];
+
+        require(block.timestamp > session.expiration1, "Complaint period has not started");
+        require(block.timestamp <= session.expiration2, "Session is out of t2");
+
+        //
+        require(session.state == SessionState.Active3, "Session state is not valid");
+
+        // Check msg.sender is Alice or Bob
+        require(msg.sender == session.exchangers[0] || msg.sender == session.exchangers[1], "Complainer is not valid");
+
+        // Check stake
+        require(stakedETH[msg.sender] >= MINIMAL_EXCHANGER_STAKE, "Insufficient stake");
+
+        // Update state to Complain
+        session.state = SessionState.Complain;
+
+        // Notify watchers
+        for (uint i = 0; i < session.watchers.length; i++) {
+            emit UserNotified(id, session.watchers[i]);
+        }
+
+        emit ComplaintFiled(msg.sender, id);
+    }
+
+    // Watcher submits S_i to resolve dispute
+    function submitWatcherShare(uint256 id, G1Point memory decShare) external {
+        Session storage session = sessions[id];
+
+        require(session.state == SessionState.Complain, "Session is not complained");
+        require(block.timestamp <= session.expiration2, "Session is out of t2");
+        require(isWatcher(id, msg.sender), "Only watchers can submit share");
+
+        // Invoke PVGSSKeyVrf and store decShare
+        if (PVGSSKeyVrf(session.Cshares1[msg.sender], decShare, pubkey2[msg.sender], G2)){
+            session.shares[msg.sender] = decShare;
+        }      
+        
+    }
+
+    // Check if an address is a watcher for a session
+    function isWatcher(uint256 id, address addr) internal view returns (bool) {
+        Session storage session = sessions[id];
+        for (uint i = 0; i < session.watchers.length; i++) {
+            if (session.watchers[i] == addr) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Get the number of watchers who have submitted shares
+    function getSubmittedWatchersCount(uint256 id) internal view returns (uint256) {
+        Session storage session = sessions[id];
+        uint256 count = 0;
+        for (uint i = 0; i < session.watchers.length; i++) {
+            if (session.shares[session.watchers[i]].X != 0 || session.shares[session.watchers[i]].Y != 0) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    function determine(uint256 orderId) external {
+        Session storage session = sessions[orderId];
+
+        // Check if session has expired
+        require(block.timestamp > session.expiration2, "Session has not expired t2");
+
+        // Determine the final state based on conditions
+
+        // case 1 in paper:optimistic
+        if (session.state == SessionState.Success) {
+            // Both exchangers have completed swap2
+            incentivizeAllWatchers(orderId);
+        } else if (session.state == SessionState.Complain) {
+            if (getSubmittedWatchersCount(orderId) > 1) {
+                // case 2 in paper: dispute resolved  TODO: set t=2 now
+                session.state = SessionState.Success;
+            } else {
+                // case 6 in paper: dispute unresolved
+                session.state = SessionState.Failure;
+            }
+            incentivizePartWatchers(orderId);
+            penalizeFaultyExchangers(orderId);
+        } else {
+            //case 4 in paper: at least one not swap1
+            if (session.state == SessionState.Active || session.state == SessionState.Active1) {
+                incentivizeAllWatchers(orderId);
+                penalizeFaultyExchangers(orderId);
+            } else if (session.state == SessionState.Active2) {
+                //case 5 in paper: both finish swap1
+                incentivizeAllWatchers(orderId);
+            } 
+            // set final state Failure
+            session.state = SessionState.Failure;
+        }
+
+        // Execute token transfers based on the final state
+        if (session.state == SessionState.Success) {
+            // Transfer tokens between exchangers
+            address seller = session.exchangers[0];
+            address buyer = session.exchangers[1];
+            Order storage order = orders[orderId];
+
+            freeze_balances[seller][orderId][order.tokenSell] -= order.amountSell;
+            freeze_balances[buyer][orderId][order.tokenBuy] -= order.amountBuy;
+
+            // Transfer seller's tokens to buyer
+            IERC20(order.tokenSell).transfer(buyer, order.amountSell);
+            // Transfer buyer's tokens to seller
+            IERC20(order.tokenBuy).transfer(seller, order.amountBuy);
+        } else if (session.state == SessionState.Failure) {
+            // Return frozen tokens to exchangers
+            address seller = session.exchangers[0];
+            address buyer = session.exchangers[1];
+            Order storage order = orders[orderId];
+
+            // Return seller's tokens
+            balances[seller][order.tokenSell] += order.amountSell;
+            freeze_balances[seller][orderId][order.tokenSell] -= order.amountSell;
+
+            // Return buyer's tokens
+            balances[buyer][order.tokenBuy] += order.amountBuy;
+            freeze_balances[buyer][orderId][order.tokenBuy] -= order.amountBuy;
+        }
+        emit SessionStateUpdated(orderId, session.state);
+    }
+
+    function incentivizeAllWatchers(uint256 sessionId) internal {
+        Session storage session = sessions[sessionId];
+        for (uint i = 0; i < session.watchers.length; i++) {
+            address watcher = session.watchers[i];
+            payable(watcher).transfer(0.01 ether); // Incentivize with 0.01 eth token
+            emit Incentivized(watcher, 0.01 ether);
+        }
+    }
+
+    //Incentivize honest and penalize other watchers
+    function incentivizePartWatchers(uint256 sessionId) internal {
+        Session storage session = sessions[sessionId];
+        for (uint i = 0; i < session.watchers.length; i++) {
+            if(session.shares[session.watchers[i]].X != 0 || session.shares[session.watchers[i]].Y != 0) {
+                address watcher = session.watchers[i];
+                payable(watcher).transfer(0.01 ether); // Incentivize with 0.01 eth token
+
+                emit Incentivized(watcher, 0.01 ether);
+            } else {
+                address watcher = session.watchers[i];
+                stakedETH[watcher] -= 0.1 ether; // Penalize with 0.1 eth token
+                emit Penalized(watcher, 0.1 ether);
+            }
+        }
+    }
+
+    //Faulty exchanger: (not swap1) or (both swap1 not finish swap2)
+    function penalizeFaultyExchangers(uint256 sessionId) internal {
+        Session storage session = sessions[sessionId];
+        address seller = session.exchangers[0];
+        address buyer = session.exchangers[1];
+
+        //(both swap1 not finish swap2)
+        if (session.seller_swap1 && session.buyer_swap1) {
+            if ((session.shares[seller].X == 0 && session.shares[seller].Y == 0)) {
+                stakedETH[seller] -= 0.1 ether; // Penalize with 0.1 eth
+                emit Penalized(seller, 0.1 ether);
+            }
+            if ((session.shares[buyer].X == 0 && session.shares[buyer].Y == 0)) {
+                stakedETH[buyer] -= 0.1 ether; // Penalize with 0.1 eth
+                emit Penalized(buyer, 0.1 ether);
+            }
+        } else {
+            //(not swap1)
+            if (!session.seller_swap1) {
+                stakedETH[seller] -= 0.1 ether; // Penalize with 0.1 eth
+                emit Penalized(seller, 0.1 ether);
+            }
+            if (!session.buyer_swap1) {
+                stakedETH[buyer] -= 0.1 ether; // Penalize with 0.1 eth
+                emit Penalized(buyer, 0.1 ether);
+            }
+        }
+
+    }
+
+    function g1PointToBytes32(G1Point memory point) internal pure returns (bytes32) {
+        return keccak256(abi.encode(point.X, point.Y));
+    }
 
 }
+
+//DEX test
+//register account1 to account10 (account 3-10 as watcher)
+//stake eth  account1 to account10
+//account1 deposit 10 PVETH   account2 deposit 10000 PVUSDT
+//account1 create order : (sell 1 PVETH to 3000 PVUSDT)  call createOrder(address tokenSell, uint256 amountSell, address tokenBuy, uint256 amountBuy)
+//account2 accept order :  call acceptOrder(uint256 orderId)
+
+//get watchers through event and set access structure
+
+
+//case1: optimistic
+//account2 call swap1 in t1
+
+//account1 call swap1 and swap2 in t1
+
+//account2 call swap2 in t1
+
+//after t2 determine
+
+
+//case2: dispute solved in t2
+
+//account2 call swap1 in t1
+
+//account1 call swap1 and swap2 in t1
+
+//** after t1, account1 complain
+
+//3 watchers call submitWatcherShare(id, decShare)
+
+
+//case6: dispute not solved in t2
+
+//account2 call swap1 in t1
+
+//account1 call swap1 and swap2 in t1
+
+//** after t1, account1 complain
+
+//0 or 1 watchers call submitWatcherShare(id, decShare)
+
+
+//case 4 in paper: at least one not swap1
+
+//account2 call swap1 in t1
+
+//after t2 determine
+
+
+//case 5 in paper: both finish swap1
+
+//account2 call swap1 in t1
+
+//account1 call swap1 in t1
+
+//after t2 determine
