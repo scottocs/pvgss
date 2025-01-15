@@ -53,3 +53,6 @@ Version: 0.8.25-develop
     ```bash
     go run main.go
     ```
+
+ERC20 token peth:  PVETH.sol deployed! Address: 0x1FFB519EeE5AAc2c95994Df195c0E636a9F55610
+Transaction hash: 0x41b8983ae100859e95c37aecc8fad8dc96d6c5ed67364ffdc546cdadbc1113fa
