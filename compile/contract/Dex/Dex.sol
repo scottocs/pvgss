@@ -6,6 +6,7 @@ interface IERC20 {
     function transferFrom(address sender, address recipient, uint256 amount) external returns (bool);
     function balanceOf(address account) external view returns (uint256);
     function transfer(address recipient, uint256 amount) external returns (bool);
+    function allowance(address owner, address spender) external view returns (uint);
 }
 
 contract Dex
@@ -864,52 +865,52 @@ contract Dex
     // ========================== PVGSS-SSS Verification End ===============================
 
 
-	bytes[] opstack;
-	bytes[] valstack;
+	// bytes[] opstack;
+	// bytes[] valstack;
 
-    mapping (string => uint256) public expects;
-    mapping (address => mapping(string => uint256)) public pool;
-    function Expect(string memory GID, uint256 ownerVal)
-	    public payable
-	    returns (bool)
-	{
-		expects[GID]=ownerVal;
-	    return true;
-	}
-	function Deposit(string memory GID)
-	    public payable
-	    returns (bool)
-	{
-		pool[msg.sender][GID]=msg.value;
-	    return true;
-	}
+    // mapping (string => uint256) public expects;
+    // mapping (address => mapping(string => uint256)) public pool;
+    // function Expect(string memory GID, uint256 ownerVal)
+	//     public payable
+	//     returns (bool)
+	// {
+	// 	expects[GID]=ownerVal;
+	//     return true;
+	// }
+	// function Deposit(string memory GID)
+	//     public payable
+	//     returns (bool)
+	// {
+	// 	pool[msg.sender][GID]=msg.value;
+	//     return true;
+	// }
 
-	function Withdraw(string memory GID)
-	    public payable
-	    returns (bool)
-	{
-		require(pool[msg.sender][GID]>0, "NO deposits in pool");
-		payable(msg.sender).transfer(pool[msg.sender][GID]);
-		pool[msg.sender][GID]=0;
-	    return true;
-	}
+	// function Withdraw(string memory GID)
+	//     public payable
+	//     returns (bool)
+	// {
+	// 	require(pool[msg.sender][GID]>0, "NO deposits in pool");
+	// 	payable(msg.sender).transfer(pool[msg.sender][GID]);
+	// 	pool[msg.sender][GID]=0;
+	//     return true;
+	// }
 
-	function Reward(address addrU, address addrO, address[] memory addrsAA, string memory GID)
-	    public payable
-	    returns (bool)
-	{
-		address payable addru = payable(addrU);
-		address payable addro = payable(addrO);
-		require(pool[addru][GID]>expects[GID],"NO deposits in pool");
-		addro.transfer(expects[GID]);
-		pool[addru][GID]=pool[addru][GID]-expects[GID];
-		for(uint8 i=0;i<addrsAA.length;i++){
-			address payable addraa = payable(addrsAA[i]);
-			addraa.transfer(pool[addru][GID]/addrsAA.length);	
-		}
+	// function Reward(address addrU, address addrO, address[] memory addrsAA, string memory GID)
+	//     public payable
+	//     returns (bool)
+	// {
+	// 	address payable addru = payable(addrU);
+	// 	address payable addro = payable(addrO);
+	// 	require(pool[addru][GID]>expects[GID],"NO deposits in pool");
+	// 	addro.transfer(expects[GID]);
+	// 	pool[addru][GID]=pool[addru][GID]-expects[GID];
+	// 	for(uint8 i=0;i<addrsAA.length;i++){
+	// 		address payable addraa = payable(addrsAA[i]);
+	// 		addraa.transfer(pool[addru][GID]/addrsAA.length);	
+	// 	}
 		
-	    return true;
-	}
+	//     return true;
+	// }
 
 	function stringEqual(
 		string memory a,
