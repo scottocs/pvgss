@@ -8,6 +8,8 @@ import (
 	// "pvgss/compile/contract"
 	"pvgss/compile/contract/Dex"
 	"pvgss/compile/contract/PVETH"
+	"pvgss/compile/contract/PVUSDT"
+	"pvgss/crypto/pvgss-sss/pvgss_sss"
 
 	// "pvgss/crypto/rwdabe"
 	"pvgss/utils"
@@ -69,32 +71,140 @@ func G2ToPoint(point *bn128.G2) Dex.DexG2Point {
 }
 
 func main() {
-	pveth_contract_address := "0x1ffb519eee5aac2c95994df195c0e636a9f55610"
+	dex_contract_address := common.HexToAddress("0xE073caaf07365048A79292761f91EaA6BD72cAcE")
+	pveth_contract_address := common.HexToAddress("0x1ffb519eee5aac2c95994df195c0e636a9f55610")
+	pvusdt_contract_address := common.HexToAddress("0x7621eea52693Fb18022BD36d8C772F8D59CceE61")
+	// privateKeys := []string{
+	// 	utils.GetENV("PRIVATE_KEY_1"),
+	// 	utils.GetENV("PRIVATE_KEY_2"),
+	// 	utils.GetENV("PRIVATE_KEY_3"),
+	// 	utils.GetENV("PRIVATE_KEY_4"),
+	// 	utils.GetENV("PRIVATE_KEY_5"),
+	// 	utils.GetENV("PRIVATE_KEY_6"),
+	// 	utils.GetENV("PRIVATE_KEY_7"),
+	// 	utils.GetENV("PRIVATE_KEY_8"),
+	// 	utils.GetENV("PRIVATE_KEY_9"),
+	// 	utils.GetENV("PRIVATE_KEY_10"),
+	// }
 
-	client, err := ethclient.Dial("http://127.0.0.1:8545")
+	// Generate secret values randomly
+	// secret, _ := rand.Int(rand.Reader, bn128.Order)
+
+	num := 10
+	SK := make([]*big.Int, num)
+	PK1 := make([]*bn128.G1, num)
+	PK2 := make([]*bn128.G2, num)
+	for i := 0; i < num; i++ {
+		SK[i], PK1[i], PK2[i] = pvgss_sss.PVGSSSetup()
+	}
+
+	client, err := ethclient.Dial("ws://127.0.0.1:8545")
 	if err != nil {
 		log.Fatalf("Failed to connect to the Ethereum client: %v, %v", err, client)
 	}
 
-	//privatekey1 := utils.GetENV("PRIVATE_KEY_1")
+	//depoly contract dex by account1
+	// privatekey1 := utils.GetENV("PRIVATE_KEY_1")
+	// deployTX := utils.Transact(client, privatekey1, big.NewInt(0))
+	// address, _ := utils.Deploy(client, "Dex", deployTX)
+
+	// deploy ERC20 token PVETH by account1
+	// privatekey1 := utils.GetENV("PRIVATE_KEY_1")
 
 	// deployTX := utils.Transact(client, privatekey1, big.NewInt(0))
 
-	// address, _ := utils.Deploy(client, "pveth", "PVETH", deployTX)
+	// address, _ := utils.Deploy(client, "PVETH", deployTX)
 
-	// fmt.Println(address)
+	// deploy ERC20 token PVUSDT by account2
+	// privatekey2 := utils.GetENV("PRIVATE_KEY_2")
 
-	ctc, _ := PVETH.NewPVETH(common.HexToAddress(pveth_contract_address), client)
+	// deployTX := utils.Transact(client, privatekey2, big.NewInt(0))
+
+	// address, _ := utils.Deploy(client, "PVUSDT", deployTX)
+	dexInstance, _ := Dex.NewDex(dex_contract_address, client)
+
+	pvethInstance, _ := PVETH.NewPVETH(pveth_contract_address, client)
+
+	pvusdtInstance, _ := PVUSDT.NewPVUSDT(pvusdt_contract_address, client)
 
 	// privatekey1 := utils.GetENV("PRIVATE_KEY_1")
 	// auth1 := utils.Transact(client, privatekey1, big.NewInt(0))
 
-	value, err := ctc.BalanceOf(nil, common.HexToAddress(utils.GetENV("ACCOUNT_1")))
+	value, err := pvethInstance.BalanceOf(nil, dex_contract_address)
 	if err != nil {
 		log.Fatalf("Failed to get balance: %v", err)
 	} else {
-		fmt.Println("value of account1:", value)
+		fmt.Println("value of dex_contract:", value)
 	}
+
+	value, err = pvusdtInstance.BalanceOf(nil, dex_contract_address)
+	if err != nil {
+		log.Fatalf("Failed to get balance: %v", err)
+	} else {
+		fmt.Println("value of dex_contract:", value)
+	}
+
+	go utils.ListenToAllEvents(client, dexInstance, dex_contract_address)
+
+	//register account1 to account10
+	// for i, privateKey := range privateKeys {
+	// 	auth := utils.Transact(client, privateKey, big.NewInt(0))
+	// 	tx, _ := dexInstance.Register(auth, G1ToPoint(PK1[i]), G2ToPoint(PK2[i]))
+	// 	receipt, _ := bind.WaitMined(context.Background(), client, tx)
+	// 	fmt.Println("On-chain Register Gas cost = ", receipt.GasUsed)
+	// }
+
+	//stake 2 eth  account1 to account10 (account 3-10 as watcher)
+	// for i, privateKey := range privateKeys {
+	// 	auth := utils.Transact(client, privateKey, big.NewInt(2000000000000000000))
+	// 	if i > 2 {
+	// 		_, err := dexInstance.StakeETH(auth, false)
+	// 		if err != nil {
+	// 			log.Fatalf("Failed to stake eth: %v", err)
+	// 		}
+	// 	} else {
+	// 		_, err := dexInstance.StakeETH(auth, true)
+	// 		if err != nil {
+	// 			log.Fatalf("Failed to stake eth: %v", err)
+	// 		}
+	// 	}
+	// }
+
+	//account1 deposit 10 PVETH   account2 deposit 10000 PVUSDT
+
+	// auth1 := utils.Transact(client, privateKeys[0], big.NewInt(0))
+	// amount, ok := new(big.Int).SetString("10000000000000000000", 10) // 10 * 1e18
+	// if !ok {
+	// 	log.Fatalf("Failed to set amount")
+	// }
+	// _, err = pvethInstance.Approve(auth1, dex_contract_address, amount)
+	// if err != nil {
+	// 	log.Fatalf("Failed to approve: %v", err)
+	// }
+
+	// auth2 := utils.Transact(client, privateKeys[0], big.NewInt(0))
+	// dexInstance.Deposit(auth2, pveth_contract_address, amount)
+
+	// auth3 := utils.Transact(client, privateKeys[1], big.NewInt(0))
+	// amount, ok = new(big.Int).SetString("10000000000000000000000", 10) // 10000 * 1e18
+	// if !ok {
+	// 	log.Fatalf("Failed to set amount")
+	// }
+	// _, err = pvusdtInstance.Approve(auth3, dex_contract_address, amount)
+	// if err != nil {
+	// 	log.Fatalf("Failed to approve: %v", err)
+	// }
+
+	// auth4 := utils.Transact(client, privateKeys[1], big.NewInt(0))
+	// amount, ok = new(big.Int).SetString("10000000000000000000000", 10) // 10000 * 1e18
+	// if !ok {
+	// 	log.Fatalf("Failed to set amount")
+	// }
+	// dexInstance.Deposit(auth4, pvusdt_contract_address, amount)
+
+	//account1 create order : (sell 1 PVETH to 3000 PVUSDT)  call createOrder(address tokenSell, uint256 amountSell, address tokenBuy, uint256 amountBuy)
+	//account2 accept order :  call acceptOrder(uint256 orderId)
+
 }
 
 // func main() {
