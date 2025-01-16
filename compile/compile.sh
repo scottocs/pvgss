@@ -17,6 +17,7 @@ rm -rf ./contract/*/*.go
 # 定义合约名称列表
 Contracts=("Dex" "PVETH" "PVUSDT")
 
+
 # 遍历每个合约进行编译
 for Name in "${Contracts[@]}"; do
     echo "Compiling $Name..."

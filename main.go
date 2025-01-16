@@ -75,31 +75,63 @@ func G2ToPoint(point *bn128.G2) Dex.DexG2Point {
 }
 
 func main() {
-	pveth_contract_address := "0x1ffb519eee5aac2c95994df195c0e636a9f55610"
+	dex_contract_address := common.HexToAddress("0xE073caaf07365048A79292761f91EaA6BD72cAcE")
+	pveth_contract_address := common.HexToAddress("0x1ffb519eee5aac2c95994df195c0e636a9f55610")
+	pvusdt_contract_address := common.HexToAddress("0x7621eea52693Fb18022BD36d8C772F8D59CceE61")
+	// privateKeys := []string{
+	// 	utils.GetENV("PRIVATE_KEY_1"),
+	// 	utils.GetENV("PRIVATE_KEY_2"),
+	// 	utils.GetENV("PRIVATE_KEY_3"),
+	// 	utils.GetENV("PRIVATE_KEY_4"),
+	// 	utils.GetENV("PRIVATE_KEY_5"),
+	// 	utils.GetENV("PRIVATE_KEY_6"),
+	// 	utils.GetENV("PRIVATE_KEY_7"),
+	// 	utils.GetENV("PRIVATE_KEY_8"),
+	// 	utils.GetENV("PRIVATE_KEY_9"),
+	// 	utils.GetENV("PRIVATE_KEY_10"),
+	// }
 
-	client, err := ethclient.Dial("http://127.0.0.1:8545")
+	// Generate secret values randomly
+	// secret, _ := rand.Int(rand.Reader, bn128.Order)
+
+	num := 10
+	SK := make([]*big.Int, num)
+	PK1 := make([]*bn128.G1, num)
+	PK2 := make([]*bn128.G2, num)
+	for i := 0; i < num; i++ {
+		SK[i], PK1[i], PK2[i] = pvgss_sss.PVGSSSetup()
+	}
+
+	client, err := ethclient.Dial("ws://127.0.0.1:8545")
 	if err != nil {
 		log.Fatalf("Failed to connect to the Ethereum client: %v, %v", err, client)
 	}
 
-	//privatekey1 := utils.GetENV("PRIVATE_KEY_1")
+	//depoly contract dex by account1
+	// privatekey1 := utils.GetENV("PRIVATE_KEY_1")
+	// deployTX := utils.Transact(client, privatekey1, big.NewInt(0))
+	// address, _ := utils.Deploy(client, "Dex", deployTX)
+
+	// deploy ERC20 token PVETH by account1
+	// privatekey1 := utils.GetENV("PRIVATE_KEY_1")
 
 	// deployTX := utils.Transact(client, privatekey1, big.NewInt(0))
 
-	// address, _ := utils.Deploy(client, "pveth", "PVETH", deployTX)
+	// address, _ := utils.Deploy(client, "PVETH", deployTX)
 
-	// fmt.Println(address)
+	// deploy ERC20 token PVUSDT by account2
+	// privatekey2 := utils.GetENV("PRIVATE_KEY_2")
 
 	// ====================================== Preset content ======================================
 	nx := 1        // the number of Watchers
 	tx := nx/2 + 1 // the threshold of Watchers
 	num := nx + 2  // the number of leaf nodes
 
-	value, err := ctc.BalanceOf(nil, common.HexToAddress(utils.GetENV("ACCOUNT_1")))
+	value, err := pvethInstance.BalanceOf(nil, dex_contract_address)
 	if err != nil {
 		log.Fatalf("Failed to get balance: %v", err)
 	} else {
-		fmt.Println("value of account1:", value)
+		fmt.Println("value of dex_contract:", value)
 	}
 	X.Children = Xp
 
