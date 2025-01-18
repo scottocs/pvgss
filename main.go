@@ -20,6 +20,7 @@ import (
 
 	// lib "github.com/fentec-project/gofe/abe"
 	// "pvgss/crypto/pvgss-sss/sss"
+	pvgss_lsss "pvgss/crypto/pvgss-lsss2/pvgss_lsss"
 	"pvgss/crypto/pvgss-sss/gss"
 	"pvgss/crypto/pvgss-sss/pvgss_sss"
 )
@@ -88,10 +89,8 @@ func main() {
 
 	ctc, _ := contract.NewContract(common.HexToAddress(address.Hex()), client)
 
-	//==== PVGSS-SSS Test ====
-
-	// 1. PVGSSSetup
-	nx := 10       // the number of Watchers
+	// ====================================== Preset content ======================================
+	nx := 1        // the number of Watchers
 	tx := nx/2 + 1 // the threshold of Watchers
 	num := nx + 2  // the number of leaf nodes
 
@@ -110,9 +109,53 @@ func main() {
 	// Generate secret values randomly
 	secret, _ := rand.Int(rand.Reader, bn128.Order)
 
+	// Key Pairs
 	SK := make([]*big.Int, num)
 	PK1 := make([]*bn128.G1, num)
 	PK2 := make([]*bn128.G2, num)
+
+	// //========================================= PVGSS-LSSS Test =========================================
+	fmt.Print("============================= PVGSS-LSSS Test =============================\n")
+
+	// 1. PVGSSSetup
+	for i := 0; i < num; i++ {
+		SK[i], PK1[i], PK2[i] = pvgss_lsss.PVGSSSetup()
+	}
+
+	// 2. PVGSSShare
+	lC, lprfs, _ := pvgss_lsss.PVGSSShare(secret, root, PK1)
+
+	// 3. PVGSSVerify
+	I0 := make([]int, 2)
+	I0[0] = 0
+	I0[1] = 1
+	// Off-chain
+	lisShareValid, _ := pvgss_lsss.PVGSSVerify(lC, lprfs, root, PK1, I0)
+
+	fmt.Println("Off-chain Shares verfication result = ", lisShareValid)
+
+	// // On-chain
+	// auth20 := utils.Transact(client, privatekey1, big.NewInt(0))
+	// tx20, _ := ctc.CreateFA(auth20, big.NewInt(int64(nx)), big.NewInt(int64(tx)))
+	// _, _ = bind.WaitMined(context.Background(), client, tx20)
+
+	// 4. PVGSSPreRecon
+	ldecShares := make([]*bn128.G1, num)
+	for i := 0; i < num; i++ {
+		ldecShares[i], _ = pvgss_lsss.PVGSSPreRecon(lC[i], SK[i])
+	}
+
+	// 5. PVGSSKeyVrf
+	// Off-chain
+	lofchainIsKeyValid := make([]bool, num)
+	for i := 0; i < num; i++ {
+		lofchainIsKeyValid[i], _ = pvgss_lsss.PVGSSKeyVrf(lC[i], ldecShares[i], PK2[i])
+	}
+	fmt.Println("Off-chain DecShares verification result =  = ", lofchainIsKeyValid)
+
+	//========================================= PVGSS-SSS Test ==========================================
+	fmt.Print("============================= PVGSS-SSS Test =============================\n")
+	// 1. PVGSSSetup
 	for i := 0; i < num; i++ {
 		SK[i], PK1[i], PK2[i] = pvgss_sss.PVGSSSetup()
 	}
@@ -135,76 +178,42 @@ func main() {
 
 	// On-chain: construct the access control structure
 	// On-chain: construct paths that satisfy the access control structure
-	// Creat on-chain path
-	// creat root
-	auth1 := utils.Transact(client, privatekey1, big.NewInt(0))
-	tx1, _ := ctc.CreateNode(auth1, big.NewInt(int64(0)), big.NewInt(int64(0)), false, big.NewInt(int64(2)), big.NewInt(int64(2)))
-	_, _ = bind.WaitMined(context.Background(), client, tx1)
-	// creat A
-	auth2 := utils.Transact(client, privatekey1, big.NewInt(0))
-	tx2, _ := ctc.CreateNode(auth2, big.NewInt(int64(0)), big.NewInt(int64(1)), true, big.NewInt(int64(0)), big.NewInt(int64(1)))
-	_, _ = bind.WaitMined(context.Background(), client, tx2)
-	// creat B
-	auth3 := utils.Transact(client, privatekey1, big.NewInt(0))
-	tx3, _ := ctc.CreateNode(auth3, big.NewInt(int64(0)), big.NewInt(int64(2)), true, big.NewInt(int64(0)), big.NewInt(int64(1)))
-	_, _ = bind.WaitMined(context.Background(), client, tx3)
-	// creat tx of P1,P2...,Pnx
-	auth4 := utils.Transact(client, privatekey1, big.NewInt(0))
-	tx4, _ := ctc.CreateNode(auth4, big.NewInt(int64(0)), big.NewInt(int64(3)), false, big.NewInt(int64(nx)), big.NewInt(int64(tx)))
-	_, _ = bind.WaitMined(context.Background(), client, tx4)
-	// creat Watchers: P1,P2,...Pnx
-	childID := make([]*big.Int, nx)
-	for i := 0; i < nx; i++ {
-		childID[i] = big.NewInt(int64(i + 1))
-		authx := utils.Transact(client, privatekey1, big.NewInt(0))
-		txx, _ := ctc.CreateNode(authx, big.NewInt(int64(3)), big.NewInt(int64(i+1)), true, big.NewInt(int64(0)), big.NewInt(int64(1)))
-		_, _ = bind.WaitMined(context.Background(), client, txx)
-	}
-	auth5 := utils.Transact(client, privatekey1, big.NewInt(0))
-	tx5, _ := ctc.AddChild(auth5, big.NewInt(int64(3)), childID)
-	_, _ = bind.WaitMined(context.Background(), client, tx5)
 	// A and B
-	// Case1: A and B
-	rootChild1 := make([]*big.Int, 2)
-	rootChild1[0] = big.NewInt(int64(1))
-	rootChild1[1] = big.NewInt(int64(2))
-	auth6_1 := utils.Transact(client, privatekey1, big.NewInt(0))
-	tx6_1, _ := ctc.AddChild(auth6_1, big.NewInt(int64(0)), rootChild1)
-	_, _ = bind.WaitMined(context.Background(), client, tx6_1)
+	auth1_1 := utils.Transact(client, privatekey1, big.NewInt(0))
+	tx1_1, _ := ctc.CreatePath(auth1_1, big.NewInt(int64(nx)), big.NewInt(int64(tx)), big.NewInt(1))
+	_, _ = bind.WaitMined(context.Background(), client, tx1_1)
 
 	VrfQ := make([]*big.Int, 2)
 	VrfQ[0] = prfs.Shatarry[0]
 	VrfQ[1] = prfs.Shatarry[1]
 
 	// A and Watchers
-	// Case2: A and X
-	// rootChild2 := make([]*big.Int, 2)
-	// rootChild2[0] = big.NewInt(int64(1))
-	// rootChild2[1] = big.NewInt(int64(3))
-	// auth6_2 := utils.Transact(client, privatekey1, big.NewInt(0))
-	// tx6_2, _ := ctc.AddChild(auth6_2, big.NewInt(int64(0)), rootChild2)
-	// _, _ = bind.WaitMined(context.Background(), client, tx6_2)
+	// auth1_2 := utils.Transact(client, privatekey1, big.NewInt(0))
+	// tx1_2, _ := ctc.CreatePath(auth1_2, big.NewInt(int64(nx)), big.NewInt(int64(tx)), big.NewInt(2))
+	// _, _ = bind.WaitMined(context.Background(), client, tx1_2)
 
-	// VrfQ := make([]*big.Int, tx+1)
+	// VrfQ := make([]*big.Int, 1+tx)
 	// VrfQ[0] = prfs.Shatarry[0]
-	// for i := 1; i < tx+1; i++ {
-	// 	VrfQ[i] = prfs.Shatarry[i+1]
+	// for i := 0; i < tx; i++ {
+	// 	VrfQ[i+1] = prfs.Shatarry[i+2]
 	// }
 
 	// B and Watchers
-	// Case3: B and X
-	// rootChild3 := make([]*big.Int, 2)
-	// rootChild3[0] = big.NewInt(int64(2))
-	// rootChild3[1] = big.NewInt(int64(3))
-	// auth6_3 := utils.Transact(client, privatekey1, big.NewInt(0))
-	// tx6_3, _ := ctc.AddChild(auth6_3, big.NewInt(int64(0)), rootChild3)
-	// _, _ = bind.WaitMined(context.Background(), client, tx6_3)
+	// auth1_3 := utils.Transact(client, privatekey1, big.NewInt(0))
+	// tx1_3, _ := ctc.CreatePath(auth1_3, big.NewInt(int64(nx)), big.NewInt(int64(tx)), big.NewInt(3))
+	// _, _ = bind.WaitMined(context.Background(), client, tx1_3)
+
+	// VrfQ := make([]*big.Int, 1+tx)
+	// VrfQ[0] = prfs.Shatarry[1]
+	// for i := 0; i < tx; i++ {
+	// 	VrfQ[i+1] = prfs.Shatarry[i+2]
+	// }
 
 	// 3. PVGSSVerify
 	// Off-chain
 	isShareValid, _ := pvgss_sss.PVGSSVerify(C, prfs, root, PK1, path1)
 
-	fmt.Println("Of-chain Verfication result = ", isShareValid)
+	fmt.Println("Off-chain Shares verfication result = ", isShareValid)
 
 	// On-chain
 	auth8 := utils.Transact(client, privatekey1, big.NewInt(0))
@@ -214,10 +223,10 @@ func main() {
 	auth9 := utils.Transact(client, privatekey1, big.NewInt(0))
 	tx9, _ := ctc.PVGSSVerify(auth9, G1sToPoints(num, C), G1sToPoints(num, PK1), big.NewInt(0), VrfQ, big.NewInt(0))
 	receipt9, _ := bind.WaitMined(context.Background(), client, tx9)
-	fmt.Println("On-chain Verification Gas cost = ", receipt9.GasUsed)
+	fmt.Println("On-chain Shares verification Gas cost = ", receipt9.GasUsed)
 
 	onchainIsShareValid, _ := ctc.GetVerifyResult(&bind.CallOpts{})
-	fmt.Println("On-chain Verfication result = ", onchainIsShareValid)
+	fmt.Println("On-chain Shares verfication result = ", onchainIsShareValid)
 
 	// 4. PVGSSPreRecon
 	decShares := make([]*bn128.G1, num)
@@ -231,7 +240,7 @@ func main() {
 	for i := 0; i < num; i++ {
 		ofchainIsKeyValid[i], _ = pvgss_sss.PVGSSKeyVrf(C[i], decShares[i], PK2[i])
 	}
-	fmt.Println("Of-chain KeyVerification result = ", ofchainIsKeyValid)
+	fmt.Println("Off-chain DecShares verification result =  = ", ofchainIsKeyValid)
 
 	// On-chain
 	var allgasused uint64
@@ -244,7 +253,7 @@ func main() {
 	}
 	onchainIsKeyValid, _ := ctc.GetKeyVrfResult(&bind.CallOpts{})
 	// fmt.Println("order = ", bn128.Order)
-	fmt.Println("On-chain KeyVerification result = ", onchainIsKeyValid)
-	fmt.Println("On-chain KeyVerification result = ", allgasused)
+	fmt.Println("On-chain DecShares verification result =  = ", onchainIsKeyValid)
+	fmt.Println("On-chain DecSHares verification Gas cost = ", allgasused)
 
 }

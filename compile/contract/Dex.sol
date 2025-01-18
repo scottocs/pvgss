@@ -696,13 +696,48 @@ contract Dex
 
     bool[] VerifyResult;
     bool[] KeyVerifyResult;
-    // Node2[] path;
-    Node public path;
+
     Prf prf;
 
     mapping(uint256 => Node) public nodes;
+    uint256[] public XChildId;
+    uint256[] public rootChildId;
 
     // ===== Node =====
+    function CreatePath(uint256 n, uint256 t, uint256 flag) public payable {
+        // root
+        createNode(0, 0, false, 3, 2);
+        // A
+        createNode(0, 1, true, 0, 1);
+        // B
+        createNode(0, 2, true, 0, 1);
+        // X t of n
+        createNode(0, 3, false, n, t);
+        XChildId = new uint256[](n);
+        for(uint256 i = 0; i < n; i++) {
+            XChildId[i] = i+1;
+            createNode(3, i+1, true, 0, 1);
+        }
+        // add child nodes for X
+        addChild(3, XChildId);
+        // add child nodes for root
+        rootChildId = new uint256[](2);
+        if (flag == 1) { //A and B
+            rootChildId[0] = 1;
+            rootChildId[1] = 2;
+            addChild(0, rootChildId);
+        } 
+        else if (flag == 2) { // A and Watchers
+            rootChildId[0] = 1;
+            rootChildId[1] = 3;
+            addChild(0, rootChildId);
+        }
+        else if (flag == 3) {
+            rootChildId[0] = 2;
+            rootChildId[1] = 3;
+            addChild(0, rootChildId);
+        }
+    }
     // Create a node
     function createNode(uint256 parentIdx, uint256 idx, bool isLeaf, uint256 childNum, uint256 t) public payable {
         // Node's ID = parents' ID * 100 + child's ID
