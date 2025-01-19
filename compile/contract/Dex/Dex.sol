@@ -1099,21 +1099,18 @@ contract Dex
         newSession.state = SessionState.Active; // Initial state
         newSession.exchangers.push(_order.seller); // Add seller (Alice)
         newSession.exchangers.push(msg.sender); // Add buyer (Bob)
-        newSession.expiration1 = block.timestamp + 3 minutes; // Set expiration1
+        newSession.expiration1 = block.timestamp + 6 minutes; // Set expiration1
         newSession.expiration2 = block.timestamp + 10 minutes; // Set expiration2
-        // newSession.seller_swap1 = false;
-        // newSession.buyer_swap1 = false;
-        
         
         //add 3 watchers
         uint256 randomIndex = uint256(keccak256(abi.encodePacked(block.timestamp, orderId)));
         for (uint256 i = 0; i < 3; i++) {
-            newSession.watchers[i] = watcherList[(randomIndex + i) % watcherList.length];
+            // newSession.watchers[i] = watcherList[(randomIndex + i) % watcherList.length];
+            newSession.watchers[i] = watcherList[i];
             newSession.watcher_flag[newSession.watchers[i]] = false;
         }
         
         emit TokensFrozen(_order.tokenBuy, msg.sender, _order.amountBuy, orderId);
-
         emit SessionCreated(orderId, _order.seller, msg.sender, newSession.watchers, newSession.expiration1, newSession.expiration2);
     }
 
@@ -1129,29 +1126,28 @@ contract Dex
 
         // Check stake
         require(stakedETH[msg.sender] >= MINIMAL_EXCHANGER_STAKE, "Insufficient stake");
-
         // Check validity of shares PVGSSVerify()
-        if (PVGSSVerify(C, PK, nodeId, Q, startIdx)) {
-            if (session.state == SessionState.Active) {
-                session.state = SessionState.halfSwap1;
-            } else if (session.state == SessionState.halfSwap1) {
-                session.state = SessionState.finishSwap1;
-            }
+        require(PVGSSVerify(C, PK, nodeId, Q, startIdx) == true, "pvgss verify failed");
 
-            // Store C_i
-            if (msg.sender == session.exchangers[0]) {
-                for (uint i = 0; i < PK.length; i++) {
-                    address user = pubkeyhashToAddress[g1PointToBytes32(PK[i])];
-                    session.Cshares1[user] = C[i];
-                }
-                session.seller_flag[0] = true;
-            } else {
-                for (uint i = 0; i < PK.length; i++) {
-                    address user = pubkeyhashToAddress[g1PointToBytes32(PK[i])];
-                    session.Cshares2[user] = C[i];
-                }
-                session.buyer_flag[0] = true;
+        // Store C_i
+        if (msg.sender == session.exchangers[0]) {
+            for (uint i = 0; i < PK.length; i++) {
+                address user = pubkeyhashToAddress[g1PointToBytes32(PK[i])];
+                session.Cshares1[user] = C[i];
             }
+            session.seller_flag[0] = true;
+        } else {
+            for (uint i = 0; i < PK.length; i++) {
+                address user = pubkeyhashToAddress[g1PointToBytes32(PK[i])];
+                session.Cshares2[user] = C[i];
+            }
+            session.buyer_flag[0] = true;
+        }
+    
+        if (session.state == SessionState.Active) {
+            session.state = SessionState.halfSwap1;
+        } else if (session.state == SessionState.halfSwap1) {
+            session.state = SessionState.finishSwap1;
         }
 
         // Update session state based on current state
@@ -1167,14 +1163,21 @@ contract Dex
         require(stakedETH[msg.sender] >= MINIMAL_EXCHANGER_STAKE, "Insufficient stake");
 
         // Invoke PVGSSKeyVrf and store decShare
-        if (PVGSSKeyVrf(session.Cshares1[msg.sender], decShare, pubkey2[msg.sender], G2)){
-            session.shares[msg.sender] = decShare;
-            if (session.state == SessionState.finishSwap1) {
-                session.state = SessionState.halfSwap2;
-            } else if (session.state == SessionState.halfSwap2) {
-                session.state = SessionState.Success;
-            }
+        require (PVGSSKeyVrf(session.Cshares1[msg.sender], decShare, pubkey2[msg.sender], G2) == true, "KeyVrf failed");
+
+        session.shares[msg.sender] = decShare;
+        if (msg.sender == session.exchangers[0]) {
+            session.seller_flag[1] = true;
+        } else {
+            session.buyer_flag[1] = true;
         }
+
+        if (session.state == SessionState.finishSwap1) {
+            session.state = SessionState.halfSwap2;
+        } else if (session.state == SessionState.halfSwap2) {
+            session.state = SessionState.Success;
+        }
+        emit SessionStateUpdated(id, session.state);
     }
 
     //complaint
@@ -1183,8 +1186,6 @@ contract Dex
 
         require(block.timestamp > session.expiration1, "Complaint period has not started");
         require(block.timestamp <= session.expiration2, "Session is out of t2");
-
-        //
         require(session.state == SessionState.halfSwap2, "Session state is not valid");
 
         // Check msg.sender is Alice or Bob
@@ -1212,13 +1213,9 @@ contract Dex
         require(block.timestamp <= session.expiration2, "Session is out of t2");
         require(isWatcher(id, msg.sender), "Only watchers can submit share");
 
-        // Invoke PVGSSKeyVrf and store decShare
-        if (PVGSSKeyVrf(session.Cshares1[msg.sender], decShare, pubkey2[msg.sender], G2)){
-            session.shares[msg.sender] = decShare;
-            session.watcher_flag[msg.sender] = true;
-        }  
-            
-        
+        require(PVGSSKeyVrf(session.Cshares1[msg.sender], decShare, pubkey2[msg.sender], G2) == true, "KeyVrf failed");
+        session.shares[msg.sender] = decShare;
+        session.watcher_flag[msg.sender] = true;
     }
 
     // Check if an address is a watcher for a session
@@ -1256,8 +1253,8 @@ contract Dex
             // Both exchangers have completed swap2
             incentivizeAllWatchers(session);
         } else if (session.state == SessionState.Complain) {
-            if (getSubmittedWatchersCount(session) > 1) {
-                // case 2 in paper: dispute resolved  TODO: set t=2 now
+            if (getSubmittedWatchersCount(session) > 1) { //TODO: set threshold=2 now
+                // case 2 in paper: dispute resolved  
                 session.state = SessionState.Success;
             } else {
                 // case 6 in paper: dispute unresolved
@@ -1368,20 +1365,79 @@ contract Dex
 //register account1 to account10 (account 3-10 as watcher)
 //stake eth  account1 to account10
 //account1 deposit 10 PVETH   account2 deposit 10000 PVUSDT
+
 //account1 create order : (sell 1 PVETH to 3000 PVUSDT)  call createOrder(address tokenSell, uint256 amountSell, address tokenBuy, uint256 amountBuy)
+//---log:
+// TokensFrozen Event:
+//   Token: 0x1FFB519EeE5AAc2c95994Df195c0E636a9F55610
+//   From: 0x98a6440BD41B3028f97B8b3d5bB1C59A96DC67a1
+//   Amount: 1000000000000000000
+//   Session ID: 0
+// OrderCreated Event:
+//   Order ID: 0
+//   Seller: 0x98a6440BD41B3028f97B8b3d5bB1C59A96DC67a1
+//   Token Sell: 0x1FFB519EeE5AAc2c95994Df195c0E636a9F55610
+//   Amount Sell: 1000000000000000000
+//   Token Buy: 0x7621eea52693Fb18022BD36d8C772F8D59CceE61
+//   Amount Buy: 3000000000000000000000
+// On-chain CreateOrder Gas cost =  203476
+
 //account2 accept order :  call acceptOrder(uint256 orderId)
+
+// TokensFrozen Event:
+//   Token: 0x7621eea52693Fb18022BD36d8C772F8D59CceE61
+//   From: 0xf18522dbD0E6eA3B4E0A932588a12A876245E98d
+//   Amount: 3000000000000000000000
+//   Session ID: 0
+// SessionCreated Event:
+//   Order ID: 0
+//   Seller: 0x98a6440BD41B3028f97B8b3d5bB1C59A96DC67a1
+//   Buyer: 0xf18522dbD0E6eA3B4E0A932588a12A876245E98d
+//   Watchers: [0xf18522dbD0E6eA3B4E0A932588a12A876245E98d 0x83f1eAA3A744c510DBc76C3381d29A9f2AE98B3d 0x98a6440BD41B3028f97B8b3d5bB1C59A96DC67a1]
+//   Expiration1: 1737169842
+//   Expiration2: 1737170262
 
 //get watchers through event and set access structure
 
 
-//case1: optimistic
+//case1: optimistic   pass  TODO: test pvgssverify
 //account2 call swap1 in t1
+
 
 //account1 call swap1 and swap2 in t1
 
 //account2 call swap2 in t1
 
 //after t2 determine
+
+
+// account2 swap1 in t1
+// SessionStateUpdated Event:
+//   Session ID: 1
+//   State: 1
+// On-chain Swap1 Gas cost =  298753
+// account1 swap1 in t1
+// SessionStateUpdated Event:
+//   Session ID: 1
+//   State: 2
+// account1 swap2 in t1
+// On-chain Swap2 Gas cost =  243971
+// account2 swap2 in t1
+
+// account2 determine after t2
+// Incentivized Event:
+//   Exchanger: 0x83f1eAA3A744c510DBc76C3381d29A9f2AE98B3d
+//   Amount: 10000000000000000
+// Incentivized Event:
+//   Exchanger: 0x094926F5Fc17638e14C74C3a5d3cf467fA1feF7C
+//   Amount: 10000000000000000
+// Incentivized Event:
+//   Exchanger: 0x70a5a954Cd03ae4E94b844bb7DffAf8b34B5A6cF
+//   Amount: 10000000000000000
+// SessionStateUpdated Event:
+//   Session ID: 1
+//   State: 5
+// On-chain Determine Gas cost =  94321
 
 
 //case2: dispute solved in t2
@@ -1393,6 +1449,91 @@ contract Dex
 //** after t1, account1 complain
 
 //3 watchers call submitWatcherShare(id, decShare)
+
+// Listening for all events...
+// TokensFrozen Event:
+//   Token: 0x1FFB519EeE5AAc2c95994Df195c0E636a9F55610
+//   From: 0x98a6440BD41B3028f97B8b3d5bB1C59A96DC67a1
+//   Amount: 10000000000000000
+//   Session ID: 5
+// OrderCreated Event:
+//   Order ID: 5
+//   Seller: 0x98a6440BD41B3028f97B8b3d5bB1C59A96DC67a1
+//   Token Sell: 0x1FFB519EeE5AAc2c95994Df195c0E636a9F55610
+//   Amount Sell: 10000000000000000
+//   Token Buy: 0x7621eea52693Fb18022BD36d8C772F8D59CceE61
+//   Amount Buy: 30000000000000000000
+// On-chain CreateOrder Gas cost =  188464
+// On-chain AcceptOrder Gas cost =  241204
+// TokensFrozen Event:
+//   Token: 0x7621eea52693Fb18022BD36d8C772F8D59CceE61
+//   From: 0xf18522dbD0E6eA3B4E0A932588a12A876245E98d
+//   Amount: 30000000000000000000
+//   Session ID: 5
+// SessionCreated Event:
+//   Order ID: 5
+//   Seller: 0x98a6440BD41B3028f97B8b3d5bB1C59A96DC67a1
+//   Buyer: 0xf18522dbD0E6eA3B4E0A932588a12A876245E98d
+//   Watchers: [0x83f1eAA3A744c510DBc76C3381d29A9f2AE98B3d 0x094926F5Fc17638e14C74C3a5d3cf467fA1feF7C 0x70a5a954Cd03ae4E94b844bb7DffAf8b34B5A6cF]
+//   Expiration1: 1737281305
+//   Expiration2: 1737281545
+// Of-chain Verfication result =  true
+// decshares[2]: 0x140002001e0
+// Of-chain KeyVerification result =  [true true true true true]
+// account2 swap1 in t1
+// SessionStateUpdated Event:
+//   Session ID: 5
+//   State: 1
+// On-chain Swap1 Gas cost =  298741
+// On-chain Verfication result =  []
+// account1 swap1 in t1
+// SessionStateUpdated Event:
+//   Session ID: 5
+//   State: 2
+// account1 swap2 in t1
+// On-chain Swap2 Gas cost =  214021
+// sleep until t2
+// account1 complain in t2
+// UserNotified Event:
+//   Session ID: 5
+//   User: 0x83f1eAA3A744c510DBc76C3381d29A9f2AE98B3d
+// UserNotified Event:
+//   Session ID: 5
+//   User: 0x094926F5Fc17638e14C74C3a5d3cf467fA1feF7C
+// UserNotified Event:
+//   Session ID: 5
+//   User: 0x70a5a954Cd03ae4E94b844bb7DffAf8b34B5A6cF
+// ComplaintFiled Event:
+//   Complainer: 0x98a6440BD41B3028f97B8b3d5bB1C59A96DC67a1
+//   Session ID: 5
+// On-chain Complain Gas cost =  41219
+// enough watchers submit share in t2
+// On-chain SubmitWatcherShare Gas cost =  227367
+// On-chain SubmitWatcherShare Gas cost =  228348
+// On-chain SubmitWatcherShare Gas cost =  229377
+// sleep until t2 end
+// value: 3000000000000000000000
+// account2 determine after t2
+// On-chain Determine Gas cost =  116517
+// Incentivized Event:
+//   Exchanger: 0x83f1eAA3A744c510DBc76C3381d29A9f2AE98B3d
+//   Amount: 10000000000000000
+// Incentivized Event:
+//   Exchanger: 0x094926F5Fc17638e14C74C3a5d3cf467fA1feF7C
+//   Amount: 10000000000000000
+// Incentivized Event:
+//   Exchanger: 0x70a5a954Cd03ae4E94b844bb7DffAf8b34B5A6cF
+//   Amount: 10000000000000000
+// Penalized Event:
+//   Exchanger: 0x98a6440BD41B3028f97B8b3d5bB1C59A96DC67a1
+//   Amount: 100000000000000000
+// Penalized Event:
+//   Exchanger: 0xf18522dbD0E6eA3B4E0A932588a12A876245E98d
+//   Amount: 100000000000000000
+// SessionStateUpdated Event:
+//   Session ID: 5
+//   State: 5
+// value: 3030000000000000000000
 
 
 //case6: dispute not solved in t2
@@ -1406,11 +1547,28 @@ contract Dex
 //0 or 1 watchers call submitWatcherShare(id, decShare)
 
 
-//case 4 in paper: at least one not swap1
 
-//account2 call swap1 in t1
+
+//case 4 in paper: at least one not swap1  测试通过
+
+//no one call swap1 in t1
 
 //after t2 determine
+
+
+
+// account2 determine after t2
+// Listening for all events...
+// Penalized Event:
+//   Exchanger: 0x98a6440BD41B3028f97B8b3d5bB1C59A96DC67a1
+//   Amount: 100000000000000000
+// Penalized Event:
+//   Exchanger: 0xf18522dbD0E6eA3B4E0A932588a12A876245E98d
+//   Amount: 100000000000000000
+// SessionStateUpdated Event:
+//   Session ID: 0
+//   State: 6
+// On-chain Determine Gas cost =  75151
 
 
 //case 5 in paper: both finish swap1
