@@ -1,23 +1,19 @@
 package main
 
 import (
-	"context"
 	"encoding/hex"
 	"fmt"
 	"log"
 	"math/big"
-	"time"
 
 	// "pvgss/compile/contract"
 	"pvgss/compile/contract/Dex"
+	"pvgss/compile/contract/PVETH"
 	"pvgss/compile/contract/PVUSDT"
-	"pvgss/crypto/pvgss-sss/gss"
-	"pvgss/crypto/pvgss-sss/pvgss_sss"
 
 	// "pvgss/crypto/rwdabe"
 	"pvgss/utils"
 
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/joho/godotenv"
@@ -76,21 +72,21 @@ func G2ToPoint(point *bn128.G2) Dex.DexG2Point {
 }
 
 func main() {
-	dex_contract_address := common.HexToAddress("0xF9C5fc56d26FeF2d539D47b320c843A4aE810292")
-	pveth_contract_address := common.HexToAddress("0x1ffb519eee5aac2c95994df195c0e636a9f55610")
+	//dex_contract_address := common.HexToAddress("0x1FFB519EeE5AAc2c95994Df195c0E636a9F55610")
+	pveth_contract_address := common.HexToAddress("0xB4FeFEAbBCA91a14352A7f699d65243Fbb3Ce8ea")
 	pvusdt_contract_address := common.HexToAddress("0x7621eea52693Fb18022BD36d8C772F8D59CceE61")
-	privateKeys := []string{
-		utils.GetENV("PRIVATE_KEY_1"),
-		utils.GetENV("PRIVATE_KEY_2"),
-		utils.GetENV("PRIVATE_KEY_3"),
-		utils.GetENV("PRIVATE_KEY_4"),
-		utils.GetENV("PRIVATE_KEY_5"),
-		utils.GetENV("PRIVATE_KEY_6"),
-		utils.GetENV("PRIVATE_KEY_7"),
-		utils.GetENV("PRIVATE_KEY_8"),
-		utils.GetENV("PRIVATE_KEY_9"),
-		utils.GetENV("PRIVATE_KEY_10"),
-	}
+	// privateKeys := []string{
+	// 	utils.GetENV("PRIVATE_KEY_1"),
+	// 	utils.GetENV("PRIVATE_KEY_2"),
+	// 	utils.GetENV("PRIVATE_KEY_3"),
+	// 	utils.GetENV("PRIVATE_KEY_4"),
+	// 	utils.GetENV("PRIVATE_KEY_5"),
+	// 	utils.GetENV("PRIVATE_KEY_6"),
+	// 	utils.GetENV("PRIVATE_KEY_7"),
+	// 	utils.GetENV("PRIVATE_KEY_8"),
+	// 	utils.GetENV("PRIVATE_KEY_9"),
+	// 	utils.GetENV("PRIVATE_KEY_10"),
+	// }
 	accounts := []common.Address{
 		common.HexToAddress(utils.GetENV("ACCOUNT_1")),
 		common.HexToAddress(utils.GetENV("ACCOUNT_2")),
@@ -164,34 +160,41 @@ func main() {
 	// deploy ERC20 token PVETH by account1
 	// privatekey1 := utils.GetENV("PRIVATE_KEY_1")
 
-	// deployTX := utils.Transact(client, privatekey1, big.NewInt(0))
+	// deployTX = utils.Transact(client, privateKeys[0], big.NewInt(0))
 
-	// address, _ := utils.Deploy(client, "PVETH", deployTX)
+	// _, _ = utils.Deploy(client, "PVETH", deployTX)
 
 	// deploy ERC20 token PVUSDT by account2
-	// privatekey2 := utils.GetENV("PRIVATE_KEY_2")
 
-	// deployTX := utils.Transact(client, privatekey2, big.NewInt(0))
+	// deployTX = utils.Transact(client, privateKeys[1], big.NewInt(0))
 
-	// address, _ := utils.Deploy(client, "PVUSDT", deployTX)
+	// _, _ = utils.Deploy(client, "PVUSDT", deployTX)
 
-	dexInstance, _ := Dex.NewDex(dex_contract_address, client)
+	// dexInstance, _ := Dex.NewDex(dex_contract_address, client)
 
-	//pvethInstance, _ := PVETH.NewPVETH(pveth_contract_address, client)
+	pvethInstance, _ := PVETH.NewPVETH(pveth_contract_address, client)
 
 	pvusdtInstance, _ := PVUSDT.NewPVUSDT(pvusdt_contract_address, client)
 
-	// privatekey1 := utils.GetENV("PRIVATE_KEY_1")
-	// auth1 := utils.Transact(client, privatekey1, big.NewInt(0))
+	for i := 0; i < 10; i++ {
+		value, err := pvethInstance.BalanceOf(nil, accounts[i])
+		if err != nil {
+			log.Fatalf("Failed to get balance: %v", err)
+		} else {
+			fmt.Println("pveth value %d:", i, value)
+		}
+	}
 
-	// value, err := pvethInstance.BalanceOf(nil, dex_contract_address)
-	// if err != nil {
-	// 	log.Fatalf("Failed to get balance: %v", err)
-	// } else {
-	// 	fmt.Println("value of dex_contract:", value)
-	// }
+	for i := 0; i < 10; i++ {
+		value, err := pvusdtInstance.BalanceOf(nil, accounts[i])
+		if err != nil {
+			log.Fatalf("Failed to get balance: %v", err)
+		} else {
+			fmt.Println("pvusdt value %d:", i, value)
+		}
+	}
 
-	go utils.ListenToAllEvents(client, dexInstance, dex_contract_address)
+	// go utils.ListenToAllEvents(client, dexInstance, dex_contract_address)
 
 	// //register account1 to account10
 	// for i, privateKey := range privateKeys {
@@ -250,180 +253,180 @@ func main() {
 	// dexInstance.Deposit(auth4, pvusdt_contract_address, amount)
 
 	//account1 create order : (sell 1 PVETH to 3000 PVUSDT)  call createOrder(address tokenSell, uint256 amountSell, address tokenBuy, uint256 amountBuy)
-	account1Balance, err := dexInstance.Balances(nil, accounts[0], pveth_contract_address)
-	if err != nil {
-		log.Fatalf("Failed to stake eth: %v", err)
-	} else {
-		fmt.Printf("Balance of %s for token %s: %s\n", accounts[0].Hex(), pveth_contract_address.Hex(), account1Balance.String())
-	}
+	// account1Balance, err := dexInstance.Balances(nil, accounts[0], pveth_contract_address)
+	// if err != nil {
+	// 	log.Fatalf("Failed to stake eth: %v", err)
+	// } else {
+	// 	fmt.Printf("Balance of %s for token %s: %s\n", accounts[0].Hex(), pveth_contract_address.Hex(), account1Balance.String())
+	// }
 
-	auth1 := utils.Transact(client, privateKeys[0], big.NewInt(0))
-	amountSell, ok := new(big.Int).SetString("10000000000000000", 10) //0.01 PVETH
-	if !ok {
-		log.Fatalf("Failed to set amount")
-	}
-	amountBuy, ok := new(big.Int).SetString("30000000000000000000", 10) //30 PVUDST
-	if !ok {
-		log.Fatalf("Failed to set amount")
-	}
-	tx1, _ := dexInstance.CreateOrder(auth1, pveth_contract_address, amountSell, pvusdt_contract_address, amountBuy)
-	_, _ = bind.WaitMined(context.Background(), client, tx1)
-	receipt1, _ := bind.WaitMined(context.Background(), client, tx1)
-	fmt.Println("On-chain CreateOrder Gas cost = ", receipt1.GasUsed)
+	// auth1 := utils.Transact(client, privateKeys[0], big.NewInt(0))
+	// amountSell, ok := new(big.Int).SetString("10000000000000000", 10) //0.01 PVETH
+	// if !ok {
+	// 	log.Fatalf("Failed to set amount")
+	// }
+	// amountBuy, ok := new(big.Int).SetString("30000000000000000000", 10) //30 PVUDST
+	// if !ok {
+	// 	log.Fatalf("Failed to set amount")
+	// }
+	// tx1, _ := dexInstance.CreateOrder(auth1, pveth_contract_address, amountSell, pvusdt_contract_address, amountBuy)
+	// _, _ = bind.WaitMined(context.Background(), client, tx1)
+	// receipt1, _ := bind.WaitMined(context.Background(), client, tx1)
+	// fmt.Println("On-chain CreateOrder Gas cost = ", receipt1.GasUsed)
 
-	orderId := big.NewInt(5)
+	// orderId := big.NewInt(5)
 
-	//account2 accept order :  call acceptOrder(uint256 orderId)
-	auth2 := utils.Transact(client, privateKeys[1], big.NewInt(0))
-	tx2, _ := dexInstance.AcceptOrder(auth2, orderId)
-	receipt2, _ := bind.WaitMined(context.Background(), client, tx2)
-	fmt.Println("On-chain AcceptOrder Gas cost = ", receipt2.GasUsed)
+	// //account2 accept order :  call acceptOrder(uint256 orderId)
+	// auth2 := utils.Transact(client, privateKeys[1], big.NewInt(0))
+	// tx2, _ := dexInstance.AcceptOrder(auth2, orderId)
+	// receipt2, _ := bind.WaitMined(context.Background(), client, tx2)
+	// fmt.Println("On-chain AcceptOrder Gas cost = ", receipt2.GasUsed)
 
-	//1. PVGSSSetup
-	nx := 3       // the number of Watchers   account 3, account 4, account 5 now
-	t := 2        // the threshold of Watchers
-	num := nx + 2 // the number of leaf nodes
+	// //1. PVGSSSetup
+	// nx := 3       // the number of Watchers   account 3, account 4, account 5 now
+	// t := 2        // the threshold of Watchers
+	// num := nx + 2 // the number of leaf nodes
 
-	// Of-chain: construct the access control structure
-	root := gss.NewNode(false, 3, 2, big.NewInt(int64(0)))
-	A := gss.NewNode(true, 0, 1, big.NewInt(int64(1)))
-	B := gss.NewNode(true, 0, 1, big.NewInt(int64(2)))
-	X := gss.NewNode(false, nx, t, big.NewInt(int64(3)))
-	root.Children = []*gss.Node{A, B, X}
-	Xp := make([]*gss.Node, nx)
-	for i := 0; i < nx; i++ {
-		Xp[i] = gss.NewNode(true, 0, 1, big.NewInt(int64(i+1)))
-	}
-	X.Children = Xp
+	// // Of-chain: construct the access control structure
+	// root := gss.NewNode(false, 3, 2, big.NewInt(int64(0)))
+	// A := gss.NewNode(true, 0, 1, big.NewInt(int64(1)))
+	// B := gss.NewNode(true, 0, 1, big.NewInt(int64(2)))
+	// X := gss.NewNode(false, nx, t, big.NewInt(int64(3)))
+	// root.Children = []*gss.Node{A, B, X}
+	// Xp := make([]*gss.Node, nx)
+	// for i := 0; i < nx; i++ {
+	// 	Xp[i] = gss.NewNode(true, 0, 1, big.NewInt(int64(i+1)))
+	// }
+	// X.Children = Xp
 
-	// Generate secret values randomly
-	// secret, _ := rand.Int(rand.Reader, bn128.Order)
-	secret := big.NewInt(1)
+	// // Generate secret values randomly
+	// // secret, _ := rand.Int(rand.Reader, bn128.Order)
+	// secret := big.NewInt(1)
 
-	//set active account num
-	accountNum = num
+	// //set active account num
+	// accountNum = num
 
-	SK := make([]*big.Int, accountNum)
-	PK1 := make([]*bn128.G1, accountNum)
-	PK2 := make([]*bn128.G2, accountNum)
-	watcher1 := 2
-	watcher2 := 3
-	watcher3 := 4
+	// SK := make([]*big.Int, accountNum)
+	// PK1 := make([]*bn128.G1, accountNum)
+	// PK2 := make([]*bn128.G2, accountNum)
+	// watcher1 := 2
+	// watcher2 := 3
+	// watcher3 := 4
 
-	SK[0] = allSK[0]
-	SK[1] = allSK[1]
-	PK1[0] = allPK1[0]
-	PK1[1] = allPK1[1]
-	PK2[0] = allPK2[0]
-	PK2[1] = allPK2[1]
+	// SK[0] = allSK[0]
+	// SK[1] = allSK[1]
+	// PK1[0] = allPK1[0]
+	// PK1[1] = allPK1[1]
+	// PK2[0] = allPK2[0]
+	// PK2[1] = allPK2[1]
 
-	SK[2] = allSK[watcher1]
-	SK[3] = allSK[watcher2]
-	SK[4] = allSK[watcher3]
+	// SK[2] = allSK[watcher1]
+	// SK[3] = allSK[watcher2]
+	// SK[4] = allSK[watcher3]
 
-	PK1[2] = allPK1[watcher1]
-	PK1[3] = allPK1[watcher2]
-	PK1[4] = allPK1[watcher3]
+	// PK1[2] = allPK1[watcher1]
+	// PK1[3] = allPK1[watcher2]
+	// PK1[4] = allPK1[watcher3]
 
-	PK2[2] = allPK2[watcher1]
-	PK2[3] = allPK2[watcher2]
-	PK2[4] = allPK2[watcher3]
+	// PK2[2] = allPK2[watcher1]
+	// PK2[3] = allPK2[watcher2]
+	// PK2[4] = allPK2[watcher3]
 
-	// 2. PVGSSShare
-	C, prfs, _ := pvgss_sss.PVGSSShare(secret, root, PK1)
+	// // 2. PVGSSShare
+	// C, prfs, _ := pvgss_sss.PVGSSShare(secret, root, PK1)
 
-	// Of-chain: construct paths that satisfy the access control structure
-	// Case1: A and B
-	path1 := gss.NewNode(false, 2, 2, big.NewInt(int64(0)))
-	path1.Children = []*gss.Node{A, B}
+	// // Of-chain: construct paths that satisfy the access control structure
+	// // Case1: A and B
+	// path1 := gss.NewNode(false, 2, 2, big.NewInt(int64(0)))
+	// path1.Children = []*gss.Node{A, B}
 
-	// On-chain: construct the access control structure
-	// On-chain: construct paths that satisfy the access control structure
-	auth1_1 := utils.Transact(client, privateKeys[0], big.NewInt(0))
-	tx1_1, _ := dexInstance.CreatePath(auth1_1, big.NewInt(int64(nx)), big.NewInt(int64(t)), big.NewInt(1))
-	_, _ = bind.WaitMined(context.Background(), client, tx1_1)
+	// // On-chain: construct the access control structure
+	// // On-chain: construct paths that satisfy the access control structure
+	// auth1_1 := utils.Transact(client, privateKeys[0], big.NewInt(0))
+	// tx1_1, _ := dexInstance.CreatePath(auth1_1, big.NewInt(int64(nx)), big.NewInt(int64(t)), big.NewInt(1))
+	// _, _ = bind.WaitMined(context.Background(), client, tx1_1)
 
-	VrfQ := make([]*big.Int, 2)
-	VrfQ[0] = prfs.Shatarry[0]
-	VrfQ[1] = prfs.Shatarry[1]
+	// VrfQ := make([]*big.Int, 2)
+	// VrfQ[0] = prfs.Shatarry[0]
+	// VrfQ[1] = prfs.Shatarry[1]
 
-	// 3. PVGSSVerify
-	// Off-chain
-	isShareValid, _ := pvgss_sss.PVGSSVerify(C, prfs, root, PK1, path1)
+	// // 3. PVGSSVerify
+	// // Off-chain
+	// isShareValid, _ := pvgss_sss.PVGSSVerify(C, prfs, root, PK1, path1)
 
-	fmt.Println("Of-chain Verfication result = ", isShareValid)
+	// fmt.Println("Of-chain Verfication result = ", isShareValid)
 
-	// 4. PVGSSPreRecon
-	decShares := make([]*bn128.G1, num)
-	for i := 0; i < num; i++ {
-		decShares[i], _ = pvgss_sss.PVGSSPreRecon(C[i], SK[i])
-	}
+	// // 4. PVGSSPreRecon
+	// decShares := make([]*bn128.G1, num)
+	// for i := 0; i < num; i++ {
+	// 	decShares[i], _ = pvgss_sss.PVGSSPreRecon(C[i], SK[i])
+	// }
 
-	// 5. PVGSSKeyVrf
-	// Off-chain
-	ofchainIsKeyValid := make([]bool, num)
-	for i := 0; i < num; i++ {
-		ofchainIsKeyValid[i], _ = pvgss_sss.PVGSSKeyVrf(C[i], decShares[i], PK2[i])
-	}
-	fmt.Println("Of-chain KeyVerification result = ", ofchainIsKeyValid)
+	// // 5. PVGSSKeyVrf
+	// // Off-chain
+	// ofchainIsKeyValid := make([]bool, num)
+	// for i := 0; i < num; i++ {
+	// 	ofchainIsKeyValid[i], _ = pvgss_sss.PVGSSKeyVrf(C[i], decShares[i], PK2[i])
+	// }
+	// fmt.Println("Of-chain KeyVerification result = ", ofchainIsKeyValid)
 
-	// On-chain  account2 call swap1 in t1
-	fmt.Println("account2 swap1 in t1")
-	// auth := utils.Transact(client, privateKeys[1], big.NewInt(0))
-	// tx, _ := dexInstance.UploadProof(auth, G1sToPoints(num, prfs.Cp), prfs.Xc, prfs.Shat, prfs.Shatarry)
-	// _, _ = bind.WaitMined(context.Background(), client, tx)
+	// // On-chain  account2 call swap1 in t1
+	// fmt.Println("account2 swap1 in t1")
+	// // auth := utils.Transact(client, privateKeys[1], big.NewInt(0))
+	// // tx, _ := dexInstance.UploadProof(auth, G1sToPoints(num, prfs.Cp), prfs.Xc, prfs.Shat, prfs.Shatarry)
+	// // _, _ = bind.WaitMined(context.Background(), client, tx)
 
-	auth10 := utils.Transact(client, privateKeys[1], big.NewInt(0))
-	tx10, _ := dexInstance.Swap1(auth10, orderId, G1sToPoints(num, C), G1sToPoints(num, PK1), big.NewInt(0), VrfQ, big.NewInt(0))
-	receipt, _ := bind.WaitMined(context.Background(), client, tx10)
-	fmt.Println("On-chain Swap1 Gas cost = ", receipt.GasUsed)
+	// auth10 := utils.Transact(client, privateKeys[1], big.NewInt(0))
+	// tx10, _ := dexInstance.Swap1(auth10, orderId, G1sToPoints(num, C), G1sToPoints(num, PK1), big.NewInt(0), VrfQ, big.NewInt(0))
+	// receipt, _ := bind.WaitMined(context.Background(), client, tx10)
+	// fmt.Println("On-chain Swap1 Gas cost = ", receipt.GasUsed)
 
-	onchainIsShareValid, _ := dexInstance.GetVerifyResult(&bind.CallOpts{})
-	fmt.Println("On-chain Verfication result = ", onchainIsShareValid)
+	// onchainIsShareValid, _ := dexInstance.GetVerifyResult(&bind.CallOpts{})
+	// fmt.Println("On-chain Verfication result = ", onchainIsShareValid)
 
-	//account1 call swap1 and swap2 in t1
+	// //account1 call swap1 and swap2 in t1
 
-	//swap1
-	fmt.Println("account1 swap1 in t1")
+	// //swap1
+	// fmt.Println("account1 swap1 in t1")
+	// // auth := utils.Transact(client, privateKeys[0], big.NewInt(0))
+	// // tx, _ := dexInstance.UploadProof(auth, G1sToPoints(num, prfs.Cp), prfs.Xc, prfs.Shat, prfs.Shatarry)
+	// // _, _ = bind.WaitMined(context.Background(), client, tx)
+
 	// auth := utils.Transact(client, privateKeys[0], big.NewInt(0))
-	// tx, _ := dexInstance.UploadProof(auth, G1sToPoints(num, prfs.Cp), prfs.Xc, prfs.Shat, prfs.Shatarry)
+	// tx, _ := dexInstance.Swap1(auth, orderId, G1sToPoints(num, C), G1sToPoints(num, PK1), big.NewInt(0), VrfQ, big.NewInt(0))
 	// _, _ = bind.WaitMined(context.Background(), client, tx)
 
-	auth := utils.Transact(client, privateKeys[0], big.NewInt(0))
-	tx, _ := dexInstance.Swap1(auth, orderId, G1sToPoints(num, C), G1sToPoints(num, PK1), big.NewInt(0), VrfQ, big.NewInt(0))
-	_, _ = bind.WaitMined(context.Background(), client, tx)
+	// //swap2
+	// fmt.Println("account1 swap2 in t1")
+	// auth = utils.Transact(client, privateKeys[0], big.NewInt(0))
+	// tx, _ = dexInstance.Swap2(auth, orderId, G1ToPoint(decShares[0]))
+	// receipt, _ = bind.WaitMined(context.Background(), client, tx)
+	// fmt.Println("On-chain Swap2 Gas cost = ", receipt.GasUsed)
 
-	//swap2
-	fmt.Println("account1 swap2 in t1")
-	auth = utils.Transact(client, privateKeys[0], big.NewInt(0))
-	tx, _ = dexInstance.Swap2(auth, orderId, G1ToPoint(decShares[0]))
-	receipt, _ = bind.WaitMined(context.Background(), client, tx)
-	fmt.Println("On-chain Swap2 Gas cost = ", receipt.GasUsed)
+	// fmt.Println("sleep until t2")
+	// time.Sleep(7 * time.Minute)
 
-	fmt.Println("sleep until t2")
-	time.Sleep(7 * time.Minute)
+	// //account1 complain in t1-t2
+	// fmt.Println("account1 complain in t2")
+	// auth = utils.Transact(client, privateKeys[0], big.NewInt(0))
+	// tx, _ = dexInstance.Complain(auth, orderId)
+	// receipt, _ = bind.WaitMined(context.Background(), client, tx)
+	// fmt.Println("On-chain Complain Gas cost = ", receipt.GasUsed)
 
-	//account1 complain in t1-t2
-	fmt.Println("account1 complain in t2")
-	auth = utils.Transact(client, privateKeys[0], big.NewInt(0))
-	tx, _ = dexInstance.Complain(auth, orderId)
-	receipt, _ = bind.WaitMined(context.Background(), client, tx)
-	fmt.Println("On-chain Complain Gas cost = ", receipt.GasUsed)
+	// // //account2 call swap2 in t1
+	// // fmt.Println("account2 swap2 in t1")
+	// // auth = utils.Transact(client, privateKeys[1], big.NewInt(0))
+	// // tx, _ = dexInstance.Swap2(auth, orderId, G1ToPoint(decShares[1]))
+	// // _, _ = bind.WaitMined(context.Background(), client, tx)
 
-	// //account2 call swap2 in t1
-	// fmt.Println("account2 swap2 in t1")
-	// auth = utils.Transact(client, privateKeys[1], big.NewInt(0))
-	// tx, _ = dexInstance.Swap2(auth, orderId, G1ToPoint(decShares[1]))
-	// _, _ = bind.WaitMined(context.Background(), client, tx)
-
-	//enough watchers submit share in t2 if complain
-	fmt.Println("enough watchers submit share in t2")
-	for i := 2; i < 5; i++ {
-		auth := utils.Transact(client, privateKeys[i], big.NewInt(0))
-		tx, _ := dexInstance.SubmitWatcherShare(auth, orderId, G1ToPoint(decShares[i]))
-		receipt, _ := bind.WaitMined(context.Background(), client, tx)
-		fmt.Println("On-chain SubmitWatcherShare Gas cost = ", receipt.GasUsed)
-	}
+	// //enough watchers submit share in t2 if complain
+	// fmt.Println("enough watchers submit share in t2")
+	// for i := 2; i < 5; i++ {
+	// 	auth := utils.Transact(client, privateKeys[i], big.NewInt(0))
+	// 	tx, _ := dexInstance.SubmitWatcherShare(auth, orderId, G1ToPoint(decShares[i]))
+	// 	receipt, _ := bind.WaitMined(context.Background(), client, tx)
+	// 	fmt.Println("On-chain SubmitWatcherShare Gas cost = ", receipt.GasUsed)
+	// }
 
 	// //not enough watchers submit share in t2 if complain
 	// fmt.Println("enough watchers submit share in t2")
@@ -434,26 +437,26 @@ func main() {
 
 	//after t2 determine
 	//sleep t2 time
-	fmt.Println("sleep until t2 end")
-	time.Sleep(4 * time.Minute)
+	// fmt.Println("sleep until t2 end")
+	// time.Sleep(4 * time.Minute)
 
-	value, err := pvusdtInstance.BalanceOf(nil, accounts[0])
-	if err != nil {
-		log.Fatalf("Failed to get balance: %v", err)
-	} else {
-		fmt.Println("value:", value)
-	}
+	// value, err := pvusdtInstance.BalanceOf(nil, accounts[0])
+	// if err != nil {
+	// 	log.Fatalf("Failed to get balance: %v", err)
+	// } else {
+	// 	fmt.Println("value:", value)
+	// }
 
-	fmt.Println("account2 determine after t2")
-	auth = utils.Transact(client, privateKeys[1], big.NewInt(0))
-	tx, _ = dexInstance.Determine(auth, orderId)
-	receipt, _ = bind.WaitMined(context.Background(), client, tx)
-	fmt.Println("On-chain Determine Gas cost = ", receipt.GasUsed)
+	// fmt.Println("account2 determine after t2")
+	// auth = utils.Transact(client, privateKeys[1], big.NewInt(0))
+	// tx, _ = dexInstance.Determine(auth, orderId)
+	// receipt, _ = bind.WaitMined(context.Background(), client, tx)
+	// fmt.Println("On-chain Determine Gas cost = ", receipt.GasUsed)
 
-	value, err = pvusdtInstance.BalanceOf(nil, accounts[0])
-	if err != nil {
-		log.Fatalf("Failed to get balance: %v", err)
-	} else {
-		fmt.Println("value:", value)
-	}
+	// value, err = pvusdtInstance.BalanceOf(nil, accounts[0])
+	// if err != nil {
+	// 	log.Fatalf("Failed to get balance: %v", err)
+	// } else {
+	// 	fmt.Println("value:", value)
+	// }
 }
