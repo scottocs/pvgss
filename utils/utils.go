@@ -226,3 +226,51 @@ func parseEvent(dexInstance *Dex.Dex, vLog types.Log) {
 
 	fmt.Printf("Unknown Event: %+v\n", vLog)
 }
+
+// err := godotenv.Load(".env")
+// if err != nil {
+// 	log.Fatalf("Failed to load .env file: %v", err)
+// }
+// envVars, err := godotenv.Read(".env")
+// if err != nil {
+// 	envVars = make(map[string]string)
+// }
+
+// accountNum := 10
+// //read key from .env
+// allSK := make([]*big.Int, accountNum)
+// allPK1 := make([]*bn128.G1, accountNum)
+// allPK2 := make([]*bn128.G2, accountNum)
+
+// for i := 0; i < accountNum; i++ {
+// 	envVarPrefix := fmt.Sprintf("ACCOUNT_%d", i+1)
+
+// 	skHex := envVars[envVarPrefix+"_SK"]
+// 	skBytes, err := hex.DecodeString(skHex)
+// 	if err != nil {
+// 		log.Fatalf("Failed to decode SK hex string: %v", err)
+// 	}
+// 	allSK[i] = new(big.Int).SetBytes(skBytes)
+
+// 	pk1Hex := envVars[envVarPrefix+"_PK1"]
+// 	pk1Bytes, err := hex.DecodeString(pk1Hex)
+// 	if err != nil {
+// 		log.Fatalf("Failed to decode PK1 hex string: %v", err)
+// 	}
+// 	allPK1[i] = new(bn128.G1)
+// 	_, err = allPK1[i].Unmarshal(pk1Bytes)
+// 	if err != nil {
+// 		log.Fatalf("Failed to unmarshal PK1: %v", err)
+// 	}
+
+// 	pk2Hex := envVars[envVarPrefix+"_PK2"]
+// 	pk2Bytes, err := hex.DecodeString(pk2Hex)
+// 	if err != nil {
+// 		log.Fatalf("Failed to decode PK2 hex string: %v", err)
+// 	}
+// 	allPK2[i] = new(bn128.G2)
+// 	_, err = allPK2[i].Unmarshal(pk2Bytes)
+// 	if err != nil {
+// 		log.Fatalf("Failed to unmarshal PK2: %v", err)
+// 	}
+// }

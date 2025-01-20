@@ -373,6 +373,10 @@ contract Dex
                 return false;
             }
             VerifyResult.push(true);
+
+            // delete proof
+            delete prf.Cp;
+            delete prf.ShatArray;
         }
         return true;
     }
@@ -581,6 +585,7 @@ contract Dex
         Order storage _order = orders[orderId];
         require(_order.isActive, "Order is not active");
         require(balances[msg.sender][_order.tokenBuy] >= _order.amountBuy, "Insufficient balance to accept order");
+        require(watcherList.length >= watcherNum, "watcher num invalid");
 
         // Freeze buyer's funds
         balances[msg.sender][_order.tokenBuy] -= _order.amountBuy;
@@ -594,8 +599,8 @@ contract Dex
         newSession.state = SessionState.Active; // Initial state
         newSession.exchangers.push(_order.seller); // Add seller (Alice)
         newSession.exchangers.push(msg.sender); // Add buyer (Bob)
-        newSession.expiration1 = block.timestamp + 6 minutes; // Set expiration1
-        newSession.expiration2 = block.timestamp + 10 minutes; // Set expiration2
+        newSession.expiration1 = block.timestamp + 30 seconds ; // Set expiration1
+        newSession.expiration2 = block.timestamp + 1 minutes; // Set expiration2
         
         //add watchers
         //uint256 randomIndex = uint256(keccak256(abi.encodePacked(block.timestamp, orderId)));
