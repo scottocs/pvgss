@@ -10,15 +10,15 @@ import (
 )
 
 func TestExtractFirstThreshold(t *testing.T) {
-	// 构造测试树 (2 of (0, 0, 3 of (0,0, 0,0)))
+	// test (2 of (0, 0, 3 of (0,0, 0,0)))
 	root := &gss.Node{
 		IsLeaf:      false,
 		Childrennum: 3,
 		T:           2,
 		Idx:         big.NewInt(0),
 		Children: []*gss.Node{
-			{IsLeaf: true, Idx: big.NewInt(1)}, // 叶子节点
-			{IsLeaf: true, Idx: big.NewInt(2)}, // 叶子节点
+			{IsLeaf: true, Idx: big.NewInt(1)}, // leaf nodes
+			{IsLeaf: true, Idx: big.NewInt(2)}, // leaf nodes
 			{
 				IsLeaf:      false,
 				Childrennum: 4,
@@ -34,12 +34,14 @@ func TestExtractFirstThreshold(t *testing.T) {
 		},
 	}
 
-	// 执行剥离操作
-	_, remainingChildren, threshold, n := ExtractFirstThreshold(root)
+	x, remainingChildren, threshold, n := ExtractFirstThreshold(root)
 
-	// 输出结果
-	fmt.Printf("剥离的阈值结构: (%d of %d)\n", threshold, n)
-	fmt.Println("剩余的子结构:")
+	// output
+	fmt.Println("x = ", x)
+	fmt.Println("remainingChildren", remainingChildren[0])
+
+	fmt.Printf("Extract the threshold structure: (%d of %d)\n", threshold, n)
+	fmt.Println("the remaining substructures:")
 	for _, child := range remainingChildren {
 		if child.IsLeaf {
 			fmt.Printf("Leaf Node (Idx: %d)\n", child.Idx)
@@ -53,19 +55,18 @@ func TestExtractFirstThreshold(t *testing.T) {
 }
 
 func TestMul(t *testing.T) {
-	// 初始化 A (4x2 矩阵)
+	// initialize A (4x2 matrix)
 	A := make([][]*big.Int, 4)
 	for i := range A {
-		A[i] = make([]*big.Int, 2) // 初始化每一行的 slice
+		A[i] = make([]*big.Int, 2)
 	}
 
-	// 初始化 B (2x1 矩阵)
+	// initialize B (2x1 matrix)
 	B := make([][]*big.Int, 2)
 	for i := range B {
-		B[i] = make([]*big.Int, 1) // 初始化每一行的 slice
+		B[i] = make([]*big.Int, 1)
 	}
 
-	// 赋值 A 矩阵
 	A[0][0] = big.NewInt(1)
 	A[0][1] = big.NewInt(1)
 	A[1][0] = big.NewInt(1)
@@ -75,7 +76,6 @@ func TestMul(t *testing.T) {
 	A[3][0] = big.NewInt(1)
 	A[3][1] = big.NewInt(3)
 
-	// 赋值 B 矩阵
 	B[0][0] = big.NewInt(5)
 	B[1][0] = big.NewInt(2)
 	result, _ := MultiplyMatrix(A, B)
@@ -83,10 +83,9 @@ func TestMul(t *testing.T) {
 }
 
 func TestGauss(t *testing.T) {
-	// 初始化 A (2x2 矩阵)
 	A := make([][]*big.Int, 3)
 	for i := range A {
-		A[i] = make([]*big.Int, 3) // 初始化每一行的 slice
+		A[i] = make([]*big.Int, 3)
 	}
 	A[0][0] = big.NewInt(1)
 	A[0][1] = big.NewInt(2)
@@ -104,15 +103,15 @@ func TestGauss(t *testing.T) {
 }
 
 func TestLSSS(t *testing.T) {
-	// 构造测试树 (2 of (0, 0, 2 of (0, 0,0)))
+	// (2 of (0, 0, 2 of (0, 0,0)))
 	AA := &gss.Node{
 		IsLeaf:      false,
 		Childrennum: 3,
 		T:           2,
 		Idx:         big.NewInt(0),
 		Children: []*gss.Node{
-			{IsLeaf: true, Idx: big.NewInt(1)}, // 叶子节点
-			{IsLeaf: true, Idx: big.NewInt(2)}, // 叶子节点
+			{IsLeaf: true, Idx: big.NewInt(1)},
+			{IsLeaf: true, Idx: big.NewInt(2)},
 			{
 				IsLeaf:      false,
 				Childrennum: 3,
@@ -126,7 +125,7 @@ func TestLSSS(t *testing.T) {
 			},
 		},
 	}
-	// 秘密元素
+	// secret value
 	secret, _ := rand.Int(rand.Reader, bn128.Order)
 	// secret := big.NewInt(int64(5))
 	shares, _ := LSSSShare(secret, AA)

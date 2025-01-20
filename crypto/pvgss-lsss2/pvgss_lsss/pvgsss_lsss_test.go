@@ -15,7 +15,7 @@ import (
 )
 
 func TestPVGSS(t *testing.T) {
-	// 构造测试树 (2 of (0, 0, 2 of (0, 0,0)))
+	// (2 of (0, 0, 2 of (0, 0,0)))
 	// 1. PVGSSSetup
 	num := 5
 	SK := make([]*big.Int, num)
@@ -30,8 +30,8 @@ func TestPVGSS(t *testing.T) {
 		T:           2,
 		Idx:         big.NewInt(0),
 		Children: []*gss.Node{
-			{IsLeaf: true, Idx: big.NewInt(1)}, // 叶子节点
-			{IsLeaf: true, Idx: big.NewInt(2)}, // 叶子节点
+			{IsLeaf: true, Idx: big.NewInt(1)},
+			{IsLeaf: true, Idx: big.NewInt(2)},
 			{
 				IsLeaf:      false,
 				Childrennum: 3,

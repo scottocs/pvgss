@@ -80,7 +80,7 @@ func PVGSSVerify(C []*bn128.G1, prfs *Prf, AA *gss.Node, PK []*bn128.G1, I []int
 		if left.String() != right.String() {
 			return false, fmt.Errorf("check nizk proof fails")
 		}
-		recoverShat, err := lsss.LSSSRecon(AA, prfs.Shatarry[:AA.T], I)
+		recoverShat, err := lsss.LSSSRecon(AA, prfs.Shatarry, I)
 		if err != nil {
 			return false, fmt.Errorf("GSSRecon fails")
 		}

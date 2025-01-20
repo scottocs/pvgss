@@ -676,6 +676,148 @@ contract Dex
         return true;
     }
 
+    // ========================== PVGSS-LSSS Verification ===============================
+
+    bool[] LSSSVerifyResult;
+    Prf Lprf;
+    // uint256[][] public Matrix;
+
+    function LSSSPVGSSVerify(G1Point[] memory C,G1Point[] memory PK, uint256[][] memory matrix ,uint256[] memory I) public payable returns (bool) {
+        for(uint i = 0; i < Lprf.ShatArray.length;i++) {
+            G1Point memory left = Lprf.Cp[i];
+            G1Point memory right = g1add(g1mul(C[i],Lprf.Xc),g1mul(PK[i],Lprf.ShatArray[i]));
+            if (!equals(left,right)) {
+                LSSSVerifyResult.push(false);
+                return false;
+            }
+            uint256 recovershat = LSSSRecon(matrix,Lprf.ShatArray,I);
+            if (Lprf.Shat != recovershat) {
+                LSSSVerifyResult.push(false);
+                return false;
+            }
+            LSSSVerifyResult.push(true);
+        }
+        return true;
+    }
+
+    function GetLSSSVerifyResult() public view returns (bool[] memory) {
+        return LSSSVerifyResult;
+    }
+
+    // LSSSRecon
+    function LSSSRecon(uint256[][] memory matrix, uint256[] memory shares, uint256[] memory I) public view returns (uint256) {
+        uint256 rows = I.length;
+        uint256[][] memory recMatrix = new uint256[][](rows);
+        for (uint256 i = 0; i < rows; i++) {
+            recMatrix[i] = new uint256[](rows);
+            for (uint256 j = 0; j < rows; j++) {
+                recMatrix[i][j] = matrix[I[i]][j];
+            }
+        }
+        uint256[][] memory invRecMatrix = GaussJordanInverse(recMatrix);
+        uint256[][] memory one = new uint256[][](1);
+        one[0] = new uint256[](rows);
+        one[0][0] = 1;
+        for (uint256 i = 1; i < rows; i++) {
+            one[0][i] = 0;
+        }
+        uint256[][] memory w = MultiplyMatrix(one, invRecMatrix);
+        uint256[][] memory shares2 = new uint256[][](rows);
+        for(uint256 i = 0; i < rows; i++) {
+            shares2[i] = new uint256[](1);
+            shares2[i][0] = shares[i];
+        }
+        
+        uint256[][] memory reconS = MultiplyMatrix(w, shares2);
+        return reconS[0][0];
+    }
+
+    function MultiplyMatrix(uint256[][] memory A, uint256[][] memory B) internal pure returns (uint256[][] memory) {
+        uint256 n = A.length;
+        uint256 m = A[0].length;
+        uint256 p = B[0].length;
+
+        require(B.length == m,"The number of columns of matrix A does not match the number of rows of matrix B.");
+
+        uint256[][] memory C = new uint256[][](n);
+        for (uint256 i = 0; i < n; i++) {
+            C[i] = new uint256[](p);
+        }
+        for (uint256 i = 0; i < n; i++) {
+            for (uint256 j = 0; j < p; j++) {
+                uint256 sum = 0;
+                for(uint256 k = 0; k < m; k++) {
+                    sum = addmod(sum, mulmod(A[i][k], B[k][j], GEN_ORDER), GEN_ORDER);
+                }
+                C[i][j] = sum;
+            }
+        }
+        return C;
+    }
+
+    function GaussJordanInverse(uint256[][] memory A) internal view returns (uint256[][] memory) {
+        uint256 n = A.length;
+        // creat [A | I]
+        uint256[][] memory augmented = new uint256[][](n);
+        for(uint256 i = 0; i < n; i++) {
+            augmented[i] = new uint256[](2*n);
+            for (uint256 j = 0; j < n; j++) {
+                augmented[i][j] = A[i][j];
+            }
+            augmented[i][i+n] = 1;
+        }
+        for (uint256 i = 0; i < n; i++) {
+            if (augmented[i][i] == 0) {
+                bool found = false;
+                for (uint256 j = i + 1; j < n; j++) {
+                    if(augmented[j][i] != 0) {
+                        for (uint256 k = 0; k < 2 * n; k++) {
+                            uint256 temp = augmented[i][k];
+                            augmented[i][k] = augmented[j][k];
+                            augmented[j][k] = temp;
+                        }
+                        found = true;
+                        break;
+                    }
+                }
+                require(found, "Matrix is singular and cannot be inverted");
+            }
+            uint256 invPivot = _modInv(augmented[i][i], GEN_ORDER);
+            for(uint256 j = 0; j < 2 * n; j++) {
+                augmented[i][j] = mulmod(augmented[i][j], invPivot, GEN_ORDER);
+            }
+
+            for (uint256 j = 0; j < n; j++) {
+                if (j != i) {
+                    uint256 factor = augmented[j][i];
+                    for (uint256 k = 0; k < 2 * n; k++) {
+                        augmented[j][k] = submod2(augmented[j][k], mulmod(factor, augmented[i][k], GEN_ORDER), GEN_ORDER);
+                    }
+                }
+            }
+        }
+        uint256[][] memory inverse = new uint256[][](n);
+        for (uint256 i = 0; i < n; i++) {
+            inverse[i] = new uint256[](n);
+            for(uint256 j = 0; j < n; j++) {
+                inverse[i][j] = augmented[i][j+n];
+            }
+        }
+        return inverse;
+    }
+
+    function LUploadProof(G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray) public payable {
+        for (uint i = 0; i < shatArray.length;i++){
+            Lprf.Cp.push(cp[i]);
+            Lprf.ShatArray.push(shatArray[i]);
+        }
+        Lprf.Xc = xc;
+        Lprf.Shat = shat;
+    }
+
+    // ========================== PVGSS-LSSS Verification End ===============================
+
+
 
     // ========================== PVGSS-SSS Verification ===============================
 
@@ -770,7 +912,7 @@ contract Dex
     // }
 
     // ===== SSS and GSS =====
-    function evaluatePolynomial(uint256 x,uint256[] memory coefficients) internal returns (uint256) {
+    function evaluatePolynomial(uint256 x,uint256[] memory coefficients) internal pure returns (uint256) {
         uint256 result = coefficients[0]; 
         uint256 xPower = x;
         for (uint256 i = 1; i < coefficients.length; i++) {
@@ -852,12 +994,16 @@ contract Dex
     }
 
     // ===== PVGSS-SSS Verification =====
-    function PVGSSVerify(G1Point[] memory C,G1Point[] memory PK,uint256 nodeId,uint256[] memory Q, uint256 startIdx) public payable returns (bool) {
+    function PVGSSVerify(G1Point[] memory C,G1Point[] memory PK,uint256[] memory I) public payable returns (bool) {
+        uint256 nodeId = 0;
+        uint256 startIdx = 0;
+        uint256[] memory Q = new uint256[](I.length);
+        for(uint256 i = 0; i < I.length; i++) {
+            Q[i] = prf.ShatArray[I[i]];
+        }
         for(uint i = 0; i < prf.ShatArray.length;i++) {
             G1Point memory left = prf.Cp[i];
-            G1Point memory temp1 = g1mul(C[i],prf.Xc);
-            G1Point memory temp2 = g1mul(PK[i],prf.ShatArray[i]);
-            G1Point memory right = g1add(temp1,temp2);
+            G1Point memory right = g1add(g1mul(C[i],prf.Xc),g1mul(PK[i],prf.ShatArray[i]));
             if (!equals(left,right)) {
                 VerifyResult.push(false);
                 return false;

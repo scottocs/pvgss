@@ -20,6 +20,7 @@ import (
 
 	// lib "github.com/fentec-project/gofe/abe"
 	// "pvgss/crypto/pvgss-sss/sss"
+	"pvgss/crypto/pvgss-lsss2/lsss"
 	pvgss_lsss "pvgss/crypto/pvgss-lsss2/pvgss_lsss"
 	"pvgss/crypto/pvgss-sss/gss"
 	"pvgss/crypto/pvgss-sss/pvgss_sss"
@@ -52,6 +53,14 @@ func G1sToPoints(num int, points []*bn128.G1) []contract.DexG1Point {
 		g1Points[i] = G1ToPoint(points[i])
 	}
 	return g1Points
+}
+
+func IntToBig(array []int) []*big.Int {
+	bigArray := make([]*big.Int, len(array))
+	for i := 0; i < len(array); i++ {
+		bigArray[i] = big.NewInt(int64(array[i]))
+	}
+	return bigArray
 }
 
 func G2ToPoint(point *bn128.G2) contract.DexG2Point {
@@ -134,10 +143,22 @@ func main() {
 
 	fmt.Println("Off-chain Shares verfication result = ", lisShareValid)
 
-	// // On-chain
-	// auth20 := utils.Transact(client, privatekey1, big.NewInt(0))
-	// tx20, _ := ctc.CreateFA(auth20, big.NewInt(int64(nx)), big.NewInt(int64(tx)))
-	// _, _ = bind.WaitMined(context.Background(), client, tx20)
+	// On-chain
+	// Upload lprfs
+	auth21 := utils.Transact(client, privatekey1, big.NewInt(0))
+	tx21, _ := ctc.LUploadProof(auth21, G1sToPoints(num, lprfs.Cp), lprfs.Xc, lprfs.Shat, lprfs.Shatarry)
+	_, _ = bind.WaitMined(context.Background(), client, tx21)
+
+	// On-chain PVGSSVerify
+	// Input : Secret share(lC), public key(PK1), LSSS matrix, user for verification (I0), where 0 denotes Alic, 1 denotes Bob, and 2 ∼ nx + 2 denotes Watchers
+	auth22 := utils.Transact(client, privatekey1, big.NewInt(0))
+	tx22, _ := ctc.LSSSPVGSSVerify(auth22, G1sToPoints(num, lC), G1sToPoints(num, PK1), lsss.Convert(root), IntToBig(I0))
+	receipt22, _ := bind.WaitMined(context.Background(), client, tx22)
+	fmt.Println("On-chain Shares verification Gas cost = ", receipt22.GasUsed)
+
+	// Get On-chain PVGSSVerify result
+	lonchainIsShareValid, _ := ctc.GetLSSSVerifyResult(&bind.CallOpts{})
+	fmt.Println("On-chain Shares verfication result = ", lonchainIsShareValid)
 
 	// 4. PVGSSPreRecon
 	ldecShares := make([]*bn128.G1, num)
@@ -152,6 +173,21 @@ func main() {
 		lofchainIsKeyValid[i], _ = pvgss_lsss.PVGSSKeyVrf(lC[i], ldecShares[i], PK2[i])
 	}
 	fmt.Println("Off-chain DecShares verification result =  = ", lofchainIsKeyValid)
+
+	// On-chain
+	// This function is called to check the correctness of the decrypted shares (i.e., the decryption keys) provided by Alice and Bob before recovering the secret
+	var lAllGasUsed uint64
+	for i := 0; i < 2; i++ {
+		auth23 := utils.Transact(client, privatekey1, big.NewInt(0))
+		tx23, _ := ctc.PVGSSKeyVrf(auth23, G1ToPoint(lC[i]), G1ToPoint(ldecShares[i]), G2ToPoint(PK2[i]), G2ToPoint(new(bn128.G2).ScalarBaseMult(big.NewInt(1))))
+		// tx11, _ := ctc.PVGSSKeyVrf(auth11, G1ToPoint(decShares[i].Neg(decShares[i])), G1ToPoint(decShares[i]), G2ToPoint(PK2[i]), G2ToPoint(PK2[i]))
+		receipt25, _ := bind.WaitMined(context.Background(), client, tx23)
+		lAllGasUsed += receipt25.GasUsed
+	}
+	lonchainIsKeyValid, _ := ctc.GetKeyVrfResult(&bind.CallOpts{})
+	// fmt.Println("order = ", bn128.Order)
+	fmt.Println("On-chain DecShares verification result =  = ", lonchainIsKeyValid)
+	fmt.Println("On-chain DecSHares verification Gas cost = ", lAllGasUsed)
 
 	//========================================= PVGSS-SSS Test ==========================================
 	fmt.Print("============================= PVGSS-SSS Test =============================\n")
@@ -184,8 +220,8 @@ func main() {
 	_, _ = bind.WaitMined(context.Background(), client, tx1_1)
 
 	VrfQ := make([]*big.Int, 2)
-	VrfQ[0] = prfs.Shatarry[0]
-	VrfQ[1] = prfs.Shatarry[1]
+	VrfQ[0] = big.NewInt(0)
+	VrfQ[1] = big.NewInt(1)
 
 	// A and Watchers
 	// auth1_2 := utils.Transact(client, privatekey1, big.NewInt(0))
@@ -193,9 +229,9 @@ func main() {
 	// _, _ = bind.WaitMined(context.Background(), client, tx1_2)
 
 	// VrfQ := make([]*big.Int, 1+tx)
-	// VrfQ[0] = prfs.Shatarry[0]
+	// VrfQ[0] = big.NewInt(0)
 	// for i := 0; i < tx; i++ {
-	// 	VrfQ[i+1] = prfs.Shatarry[i+2]
+	// 	VrfQ[i+1] = big.NewInt(int64(i + 2))
 	// }
 
 	// B and Watchers
@@ -204,9 +240,9 @@ func main() {
 	// _, _ = bind.WaitMined(context.Background(), client, tx1_3)
 
 	// VrfQ := make([]*big.Int, 1+tx)
-	// VrfQ[0] = prfs.Shatarry[1]
+	// VrfQ[0] = big.NewInt(1)
 	// for i := 0; i < tx; i++ {
-	// 	VrfQ[i+1] = prfs.Shatarry[i+2]
+	// 	VrfQ[i+1] = big.NewInt(int64(i + 2))
 	// }
 
 	// 3. PVGSSVerify
@@ -216,12 +252,14 @@ func main() {
 	fmt.Println("Off-chain Shares verfication result = ", isShareValid)
 
 	// On-chain
+	// Upload prfs
 	auth8 := utils.Transact(client, privatekey1, big.NewInt(0))
 	tx8, _ := ctc.UploadProof(auth8, G1sToPoints(num, prfs.Cp), prfs.Xc, prfs.Shat, prfs.Shatarry)
 	_, _ = bind.WaitMined(context.Background(), client, tx8)
 
+	// Input : Secret share(C), public key(PK1), user for verification (VrfQ), where 0 denotes Alic, 1 denotes Bob, and 2 ∼ nx + 2 denotes Watchers, the start idx (0)
 	auth9 := utils.Transact(client, privatekey1, big.NewInt(0))
-	tx9, _ := ctc.PVGSSVerify(auth9, G1sToPoints(num, C), G1sToPoints(num, PK1), big.NewInt(0), VrfQ, big.NewInt(0))
+	tx9, _ := ctc.PVGSSVerify(auth9, G1sToPoints(num, C), G1sToPoints(num, PK1), VrfQ)
 	receipt9, _ := bind.WaitMined(context.Background(), client, tx9)
 	fmt.Println("On-chain Shares verification Gas cost = ", receipt9.GasUsed)
 
@@ -236,15 +274,16 @@ func main() {
 
 	// 5. PVGSSKeyVrf
 	// Off-chain
-	ofchainIsKeyValid := make([]bool, num)
-	for i := 0; i < num; i++ {
+	ofchainIsKeyValid := make([]bool, 2)
+	for i := 0; i < 2; i++ {
 		ofchainIsKeyValid[i], _ = pvgss_sss.PVGSSKeyVrf(C[i], decShares[i], PK2[i])
 	}
 	fmt.Println("Off-chain DecShares verification result =  = ", ofchainIsKeyValid)
 
 	// On-chain
+	// This function is called to check the correctness of the decrypted shares (i.e., the decryption keys) provided by Alice and Bob before recovering the secret
 	var allgasused uint64
-	for i := 0; i < num; i++ {
+	for i := 0; i < 2; i++ {
 		auth11 := utils.Transact(client, privatekey1, big.NewInt(0))
 		tx11, _ := ctc.PVGSSKeyVrf(auth11, G1ToPoint(C[i]), G1ToPoint(decShares[i]), G2ToPoint(PK2[i]), G2ToPoint(new(bn128.G2).ScalarBaseMult(big.NewInt(1))))
 		// tx11, _ := ctc.PVGSSKeyVrf(auth11, G1ToPoint(decShares[i].Neg(decShares[i])), G1ToPoint(decShares[i]), G2ToPoint(PK2[i]), G2ToPoint(PK2[i]))
