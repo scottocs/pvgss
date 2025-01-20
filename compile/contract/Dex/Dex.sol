@@ -11,8 +11,6 @@ interface IERC20 {
 
 contract Dex
 {
-	// using bn128G2 for *;
-//	using strings for *;
 	// p = p(u) = 36u^4 + 36u^3 + 24u^2 + 6u + 1
     uint256 constant FIELD_ORDER = 0x30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47;
 
@@ -36,19 +34,6 @@ contract Dex
 		uint[2] Y;
 	}
 
-	// (P+1) / 4
-	function A() pure internal returns (uint256) {
-		return CURVE_A;
-	}
-
-	function N() pure internal returns (uint256) {
-		return GEN_ORDER;
-	}
-
-	/// return the generator of G1
-	function P1() pure internal returns (G1Point memory) {
-		return G1Point(1, 2);
-	}
     G1Point G1 = G1Point(1, 2);
     G2Point G2 = G2Point(
         [11559732032986387107991004021392285783925812861821192530917403151452391805634,
@@ -56,16 +41,6 @@ contract Dex
         [4082367875863433681332203403145435568316851327593401208105741076214120093531,
         8495653923123431417604973247489272438418190587263600148770280649306958101930]
     );
-
-	/// return the generator of G2
-	function P2() pure internal returns (G2Point memory) {
-		return G2Point(
-			[11559732032986387107991004021392285783925812861821192530917403151452391805634,
-			 10857046999023057135944570762232829481370756359578518086990519993285655852781],
-			[4082367875863433681332203403145435568316851327593401208105741076214120093531,
-			 8495653923123431417604973247489272438418190587263600148770280649306958101930]
-		);
-	}
 
 	/// return the sum of two points of G1
 	function g1add(G1Point memory p1, G1Point memory p2) view internal returns (G1Point memory r) {
@@ -387,6 +362,9 @@ contract Dex
 
     // Upload Prfs
     function UploadProof(G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray) public payable {
+        // delete proof
+        delete prf.Cp;
+        delete prf.ShatArray;
         for (uint i = 0; i < shatArray.length;i++){
             prf.Cp.push(cp[i]);
             prf.ShatArray.push(shatArray[i]);
@@ -401,14 +379,149 @@ contract Dex
         return isKeyValid;
     }
 
-    function GetKeyVrfResult() public view returns (bool []memory) {
-        return KeyVerifyResult;
-    }
+    // function GetKeyVrfResult() public view returns (bool []memory) {
+    //     return KeyVerifyResult;
+    // }
 
     // ========================== PVGSS-SSS Verification End ===============================
 
+    // // ========================== PVGSS-LSSS Verification ===============================
 
-    //参考 https://github.com/Uniswap/v2-core/tree/master
+    // bool[] LSSSVerifyResult;
+    // Prf Lprf;
+    // // uint256[][] public Matrix;
+    // function LSSSPVGSSVerify(G1Point[] memory C,G1Point[] memory PK, uint256[][] memory matrix ,uint256[] memory I) public payable returns (bool) {
+    //     for(uint i = 0; i < Lprf.ShatArray.length;i++) {
+    //         G1Point memory left = Lprf.Cp[i];
+    //         G1Point memory right = g1add(g1mul(C[i],Lprf.Xc),g1mul(PK[i],Lprf.ShatArray[i]));
+    //         if (!equals(left,right)) {
+    //             LSSSVerifyResult.push(false);
+    //             return false;
+    //         }
+    //         uint256 recovershat = LSSSRecon(matrix,Lprf.ShatArray,I);
+    //         if (Lprf.Shat != recovershat) {
+    //             LSSSVerifyResult.push(false);
+    //             return false;
+    //         }
+    //         LSSSVerifyResult.push(true);
+    //     }
+    //     // delete proof
+    //     delete Lprf.Cp;
+    //     delete Lprf.ShatArray;
+    //     return true;
+    // }
+    // function GetLSSSVerifyResult() public view returns (bool[] memory) {
+    //     return LSSSVerifyResult;
+    // }
+    // // LSSSRecon
+    // function LSSSRecon(uint256[][] memory matrix, uint256[] memory shares, uint256[] memory I) public view returns (uint256) {
+    //     uint256 rows = I.length;
+    //     uint256[][] memory recMatrix = new uint256[][](rows);
+    //     for (uint256 i = 0; i < rows; i++) {
+    //         recMatrix[i] = new uint256[](rows);
+    //         for (uint256 j = 0; j < rows; j++) {
+    //             recMatrix[i][j] = matrix[I[i]][j];
+    //         }
+    //     }
+    //     uint256[][] memory invRecMatrix = GaussJordanInverse(recMatrix);
+    //     uint256[][] memory one = new uint256[][](1);
+    //     one[0] = new uint256[](rows);
+    //     one[0][0] = 1;
+    //     for (uint256 i = 1; i < rows; i++) {
+    //         one[0][i] = 0;
+    //     }
+    //     uint256[][] memory w = MultiplyMatrix(one, invRecMatrix);
+    //     uint256[][] memory shares2 = new uint256[][](rows);
+    //     for(uint256 i = 0; i < rows; i++) {
+    //         shares2[i] = new uint256[](1);
+    //         shares2[i][0] = shares[i];
+    //     }
+        
+    //     uint256[][] memory reconS = MultiplyMatrix(w, shares2);
+    //     return reconS[0][0];
+    // }
+    // function MultiplyMatrix(uint256[][] memory A, uint256[][] memory B) internal pure returns (uint256[][] memory) {
+    //     uint256 n = A.length;
+    //     uint256 m = A[0].length;
+    //     uint256 p = B[0].length;
+    //     require(B.length == m,"The number of columns of matrix A does not match the number of rows of matrix B.");
+    //     uint256[][] memory C = new uint256[][](n);
+    //     for (uint256 i = 0; i < n; i++) {
+    //         C[i] = new uint256[](p);
+    //     }
+    //     for (uint256 i = 0; i < n; i++) {
+    //         for (uint256 j = 0; j < p; j++) {
+    //             uint256 sum = 0;
+    //             for(uint256 k = 0; k < m; k++) {
+    //                 sum = addmod(sum, mulmod(A[i][k], B[k][j], GEN_ORDER), GEN_ORDER);
+    //             }
+    //             C[i][j] = sum;
+    //         }
+    //     }
+    //     return C;
+    // }
+    // function GaussJordanInverse(uint256[][] memory A) internal view returns (uint256[][] memory) {
+    //     uint256 n = A.length;
+    //     // creat [A | I]
+    //     uint256[][] memory augmented = new uint256[][](n);
+    //     for(uint256 i = 0; i < n; i++) {
+    //         augmented[i] = new uint256[](2*n);
+    //         for (uint256 j = 0; j < n; j++) {
+    //             augmented[i][j] = A[i][j];
+    //         }
+    //         augmented[i][i+n] = 1;
+    //     }
+    //     for (uint256 i = 0; i < n; i++) {
+    //         if (augmented[i][i] == 0) {
+    //             bool found = false;
+    //             for (uint256 j = i + 1; j < n; j++) {
+    //                 if(augmented[j][i] != 0) {
+    //                     for (uint256 k = 0; k < 2 * n; k++) {
+    //                         uint256 temp = augmented[i][k];
+    //                         augmented[i][k] = augmented[j][k];
+    //                         augmented[j][k] = temp;
+    //                     }
+    //                     found = true;
+    //                     break;
+    //                 }
+    //             }
+    //             require(found, "Matrix is singular and cannot be inverted");
+    //         }
+    //         uint256 invPivot = _modInv(augmented[i][i], GEN_ORDER);
+    //         for(uint256 j = 0; j < 2 * n; j++) {
+    //             augmented[i][j] = mulmod(augmented[i][j], invPivot, GEN_ORDER);
+    //         }
+    //         for (uint256 j = 0; j < n; j++) {
+    //             if (j != i) {
+    //                 uint256 factor = augmented[j][i];
+    //                 for (uint256 k = 0; k < 2 * n; k++) {
+    //                     augmented[j][k] = submod2(augmented[j][k], mulmod(factor, augmented[i][k], GEN_ORDER), GEN_ORDER);
+    //                 }
+    //             }
+    //         }
+    //     }
+    //     uint256[][] memory inverse = new uint256[][](n);
+    //     for (uint256 i = 0; i < n; i++) {
+    //         inverse[i] = new uint256[](n);
+    //         for(uint256 j = 0; j < n; j++) {
+    //             inverse[i][j] = augmented[i][j+n];
+    //         }
+    //     }
+    //     return inverse;
+    // }
+    // function LUploadProof(G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray) public payable {
+    //     // delete proof
+    //     delete Lprf.Cp;
+    //     delete Lprf.ShatArray;
+    //     for (uint i = 0; i < shatArray.length;i++){
+    //         Lprf.Cp.push(cp[i]);
+    //         Lprf.ShatArray.push(shatArray[i]);
+    //     }
+    //     Lprf.Xc = xc;
+    //     Lprf.Shat = shat;
+    // }
+    // ========================== PVGSS-LSSS Verification End ===============================
+
     
     // store contract balance   users A token B balance: balances[userA addr][tokenB addr]
     mapping(address => mapping(address => uint256)) public balances;
@@ -562,23 +675,23 @@ contract Dex
         return currentOrderId;
     }
 
-    // Cancel an order
-    function cancelOrder(uint256 orderId) external {
-        Order storage order = orders[orderId];
+    // // Cancel an order
+    // function cancelOrder(uint256 orderId) external {
+    //     Order storage order = orders[orderId];
 
-        // Check if the order exists and is active
-        require(order.isActive, "Order is not active or does not exist");
+    //     // Check if the order exists and is active
+    //     require(order.isActive, "Order is not active or does not exist");
 
-        // Check if the caller is the seller
-        require(msg.sender == order.seller, "Only the seller can cancel the order");
+    //     // Check if the caller is the seller
+    //     require(msg.sender == order.seller, "Only the seller can cancel the order");
 
-        // Mark the order as inactive
-        order.isActive = false;
+    //     // Mark the order as inactive
+    //     order.isActive = false;
 
-        // Unfreeze the seller's funds
-        balances[msg.sender][order.tokenSell] += order.amountSell;
-        freeze_balances[msg.sender][orderId][order.tokenSell] -= order.amountSell;
-    }
+    //     // Unfreeze the seller's funds
+    //     balances[msg.sender][order.tokenSell] += order.amountSell;
+    //     freeze_balances[msg.sender][orderId][order.tokenSell] -= order.amountSell;
+    // }
 
     // Accept order
     function acceptOrder(uint256 orderId, uint256 watcherNum) external {
@@ -679,6 +792,45 @@ contract Dex
         }
         emit SessionStateUpdated(id, session.state);
     }
+
+    // function lswap1(uint256 id, G1Point[] memory C, G1Point[] memory PK, uint256[][] memory matrix ,uint256[] memory I) external onlyExchanger(id){
+    //     Session storage session = sessions[id];
+
+    //     // Check session state
+    //     require(session.state == SessionState.Active || session.state == SessionState.halfSwap1, "Session state is invalid for swap1");
+
+    //     // Check Expiration1
+    //     require(block.timestamp <= session.expiration1, "Session is expired t1");
+
+    //     // Check stake
+    //     require(stakedETH[msg.sender] >= MINIMAL_EXCHANGER_STAKE, "Insufficient stake");
+    //     // Check validity of shares PVGSSVerify()
+    //     require(LSSSPVGSSVerify(C, PK, matrix, I) == true, "pvgss verify failed");
+
+    //     // Store C_i
+    //     if (msg.sender == session.exchangers[0]) {
+    //         for (uint i = 0; i < PK.length; i++) {
+    //             address user = pubkeyhashToAddress[g1PointToBytes32(PK[i])];
+    //             session.Cshares1[user] = C[i];
+    //         }
+    //         session.seller_flag[0] = true;
+    //     } else {
+    //         for (uint i = 0; i < PK.length; i++) {
+    //             address user = pubkeyhashToAddress[g1PointToBytes32(PK[i])];
+    //             session.Cshares2[user] = C[i];
+    //         }
+    //         session.buyer_flag[0] = true;
+    //     }
+    
+    //     if (session.state == SessionState.Active) {
+    //         session.state = SessionState.halfSwap1;
+    //     } else if (session.state == SessionState.halfSwap1) {
+    //         session.state = SessionState.finishSwap1;
+    //     }
+
+    //     // Update session state based on current state
+    //     emit SessionStateUpdated(id, session.state);
+    // }
 
     //complaint
     function complain(uint256 id) external {
@@ -860,221 +1012,3 @@ contract Dex
         return keccak256(abi.encode(point.X, point.Y));
     }
 }
-
-//DEX test
-//register account1 to account10 (account 3-10 as watcher)
-//stake eth  account1 to account10
-//account1 deposit 10 PVETH   account2 deposit 10000 PVUSDT
-
-//account1 create order : (sell 1 PVETH to 3000 PVUSDT)  call createOrder(address tokenSell, uint256 amountSell, address tokenBuy, uint256 amountBuy)
-//---log:
-// TokensFrozen Event:
-//   Token: 0x1FFB519EeE5AAc2c95994Df195c0E636a9F55610
-//   From: 0x98a6440BD41B3028f97B8b3d5bB1C59A96DC67a1
-//   Amount: 1000000000000000000
-//   Session ID: 0
-// OrderCreated Event:
-//   Order ID: 0
-//   Seller: 0x98a6440BD41B3028f97B8b3d5bB1C59A96DC67a1
-//   Token Sell: 0x1FFB519EeE5AAc2c95994Df195c0E636a9F55610
-//   Amount Sell: 1000000000000000000
-//   Token Buy: 0x7621eea52693Fb18022BD36d8C772F8D59CceE61
-//   Amount Buy: 3000000000000000000000
-// On-chain CreateOrder Gas cost =  203476
-
-//account2 accept order :  call acceptOrder(uint256 orderId)
-
-// TokensFrozen Event:
-//   Token: 0x7621eea52693Fb18022BD36d8C772F8D59CceE61
-//   From: 0xf18522dbD0E6eA3B4E0A932588a12A876245E98d
-//   Amount: 3000000000000000000000
-//   Session ID: 0
-// SessionCreated Event:
-//   Order ID: 0
-//   Seller: 0x98a6440BD41B3028f97B8b3d5bB1C59A96DC67a1
-//   Buyer: 0xf18522dbD0E6eA3B4E0A932588a12A876245E98d
-//   Watchers: [0xf18522dbD0E6eA3B4E0A932588a12A876245E98d 0x83f1eAA3A744c510DBc76C3381d29A9f2AE98B3d 0x98a6440BD41B3028f97B8b3d5bB1C59A96DC67a1]
-//   Expiration1: 1737169842
-//   Expiration2: 1737170262
-
-//get watchers through event and set access structure
-
-
-//case1: optimistic   pass  TODO: test pvgssverify
-//account2 call swap1 in t1
-
-
-//account1 call swap1 and swap2 in t1
-
-//account2 call swap2 in t1
-
-//after t2 determine
-
-
-// account2 swap1 in t1
-// SessionStateUpdated Event:
-//   Session ID: 1
-//   State: 1
-// On-chain Swap1 Gas cost =  298753
-// account1 swap1 in t1
-// SessionStateUpdated Event:
-//   Session ID: 1
-//   State: 2
-// account1 swap2 in t1
-// On-chain Swap2 Gas cost =  243971
-// account2 swap2 in t1
-
-// account2 determine after t2
-// Incentivized Event:
-//   Exchanger: 0x83f1eAA3A744c510DBc76C3381d29A9f2AE98B3d
-//   Amount: 10000000000000000
-// Incentivized Event:
-//   Exchanger: 0x094926F5Fc17638e14C74C3a5d3cf467fA1feF7C
-//   Amount: 10000000000000000
-// Incentivized Event:
-//   Exchanger: 0x70a5a954Cd03ae4E94b844bb7DffAf8b34B5A6cF
-//   Amount: 10000000000000000
-// SessionStateUpdated Event:
-//   Session ID: 1
-//   State: 5
-// On-chain Determine Gas cost =  94321
-
-
-//case2: dispute solved in t2
-
-//account2 call swap1 in t1
-
-//account1 call swap1 and swap2 in t1
-
-//** after t1, account1 complain
-
-//3 watchers call submitWatcherShare(id, decShare)
-
-// Listening for all events...
-// TokensFrozen Event:
-//   Token: 0x1FFB519EeE5AAc2c95994Df195c0E636a9F55610
-//   From: 0x98a6440BD41B3028f97B8b3d5bB1C59A96DC67a1
-//   Amount: 10000000000000000
-//   Session ID: 5
-// OrderCreated Event:
-//   Order ID: 5
-//   Seller: 0x98a6440BD41B3028f97B8b3d5bB1C59A96DC67a1
-//   Token Sell: 0x1FFB519EeE5AAc2c95994Df195c0E636a9F55610
-//   Amount Sell: 10000000000000000
-//   Token Buy: 0x7621eea52693Fb18022BD36d8C772F8D59CceE61
-//   Amount Buy: 30000000000000000000
-// On-chain CreateOrder Gas cost =  188464
-// On-chain AcceptOrder Gas cost =  241204
-// TokensFrozen Event:
-//   Token: 0x7621eea52693Fb18022BD36d8C772F8D59CceE61
-//   From: 0xf18522dbD0E6eA3B4E0A932588a12A876245E98d
-//   Amount: 30000000000000000000
-//   Session ID: 5
-// SessionCreated Event:
-//   Order ID: 5
-//   Seller: 0x98a6440BD41B3028f97B8b3d5bB1C59A96DC67a1
-//   Buyer: 0xf18522dbD0E6eA3B4E0A932588a12A876245E98d
-//   Watchers: [0x83f1eAA3A744c510DBc76C3381d29A9f2AE98B3d 0x094926F5Fc17638e14C74C3a5d3cf467fA1feF7C 0x70a5a954Cd03ae4E94b844bb7DffAf8b34B5A6cF]
-//   Expiration1: 1737281305
-//   Expiration2: 1737281545
-// Of-chain Verfication result =  true
-// decshares[2]: 0x140002001e0
-// Of-chain KeyVerification result =  [true true true true true]
-// account2 swap1 in t1
-// SessionStateUpdated Event:
-//   Session ID: 5
-//   State: 1
-// On-chain Swap1 Gas cost =  298741
-// On-chain Verfication result =  []
-// account1 swap1 in t1
-// SessionStateUpdated Event:
-//   Session ID: 5
-//   State: 2
-// account1 swap2 in t1
-// On-chain Swap2 Gas cost =  214021
-// sleep until t2
-// account1 complain in t2
-// UserNotified Event:
-//   Session ID: 5
-//   User: 0x83f1eAA3A744c510DBc76C3381d29A9f2AE98B3d
-// UserNotified Event:
-//   Session ID: 5
-//   User: 0x094926F5Fc17638e14C74C3a5d3cf467fA1feF7C
-// UserNotified Event:
-//   Session ID: 5
-//   User: 0x70a5a954Cd03ae4E94b844bb7DffAf8b34B5A6cF
-// ComplaintFiled Event:
-//   Complainer: 0x98a6440BD41B3028f97B8b3d5bB1C59A96DC67a1
-//   Session ID: 5
-// On-chain Complain Gas cost =  41219
-// enough watchers submit share in t2
-// On-chain SubmitWatcherShare Gas cost =  227367
-// On-chain SubmitWatcherShare Gas cost =  228348
-// On-chain SubmitWatcherShare Gas cost =  229377
-// sleep until t2 end
-// value: 3000000000000000000000
-// account2 determine after t2
-// On-chain Determine Gas cost =  116517
-// Incentivized Event:
-//   Exchanger: 0x83f1eAA3A744c510DBc76C3381d29A9f2AE98B3d
-//   Amount: 10000000000000000
-// Incentivized Event:
-//   Exchanger: 0x094926F5Fc17638e14C74C3a5d3cf467fA1feF7C
-//   Amount: 10000000000000000
-// Incentivized Event:
-//   Exchanger: 0x70a5a954Cd03ae4E94b844bb7DffAf8b34B5A6cF
-//   Amount: 10000000000000000
-// Penalized Event:
-//   Exchanger: 0x98a6440BD41B3028f97B8b3d5bB1C59A96DC67a1
-//   Amount: 100000000000000000
-// Penalized Event:
-//   Exchanger: 0xf18522dbD0E6eA3B4E0A932588a12A876245E98d
-//   Amount: 100000000000000000
-// SessionStateUpdated Event:
-//   Session ID: 5
-//   State: 5
-// value: 3030000000000000000000
-
-
-//case6: dispute not solved in t2
-
-//account2 call swap1 in t1
-
-//account1 call swap1 and swap2 in t1
-
-//** after t1, account1 complain
-
-//0 or 1 watchers call submitWatcherShare(id, decShare)
-
-
-
-
-//case 4 in paper: at least one not swap1  测试通过
-
-//no one call swap1 in t1
-
-//after t2 determine
-
-
-
-// account2 determine after t2
-// Listening for all events...
-// Penalized Event:
-//   Exchanger: 0x98a6440BD41B3028f97B8b3d5bB1C59A96DC67a1
-//   Amount: 100000000000000000
-// Penalized Event:
-//   Exchanger: 0xf18522dbD0E6eA3B4E0A932588a12A876245E98d
-//   Amount: 100000000000000000
-// SessionStateUpdated Event:
-//   Session ID: 0
-//   State: 6
-// On-chain Determine Gas cost =  75151
-
-
-//case 5 in paper: both finish swap1
-
-//account2 call swap1 in t1
-
-//account1 call swap1 in t1
-
-//after t2 determine

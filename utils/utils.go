@@ -69,8 +69,14 @@ func Transact(client *ethclient.Client, privatekey string, value *big.Int) *bind
 	auth, _ := bind.NewKeyedTransactorWithChainID(key, chainID)
 	auth.Nonce = big.NewInt(int64(nonce))
 	auth.Value = value
-	auth.GasLimit = uint64(12719925)        //gasLimit
-	auth.GasPrice = big.NewInt(20000000000) //gasPrice
+	auth.GasLimit = uint64(10000000) //gasLimit
+	// auth.GasPrice = big.NewInt(6000000000) //gasPrice
+	gasPrice, err := client.SuggestGasPrice(context.Background())
+	if err != nil {
+		log.Fatalf("Failed to suggest gas price: %v", err)
+	}
+	auth.GasPrice = gasPrice
+	fmt.Println("gas price:", gasPrice)
 	return auth
 }
 

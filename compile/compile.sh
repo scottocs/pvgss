@@ -23,8 +23,8 @@ for Name in "${Contracts[@]}"; do
     echo "Compiling $Name..."
     
     # 编译ABI和BIN文件
-    solc --evm-version paris --optimize --abi ./contract/$Name/$Name.sol -o ./contract/$Name --overwrite
-    solc --evm-version paris --optimize --bin ./contract/$Name/$Name.sol -o ./contract/$Name --overwrite
+    solc --evm-version paris --optimize --optimize-runs 200 --abi ./contract/$Name/$Name.sol -o ./contract/$Name --overwrite
+    solc --evm-version paris --optimize --optimize-runs 200 --bin ./contract/$Name/$Name.sol -o ./contract/$Name --overwrite
     
     # 生成Go绑定文件
     abigen --abi=./contract/$Name/$Name.abi --bin=./contract/$Name/$Name.bin --pkg=$Name --out=./contract/$Name/$Name.go
