@@ -5,20 +5,22 @@ import (
 	"fmt"
 	"math/big"
 	bn128 "pvgss/bn128"
+
+	// "pvgss/crypto/pvgss-lsss2/lsss"
 	"pvgss/crypto/pvgss-sss/gss"
 	"testing"
 )
 
 func TestExtractFirstThreshold(t *testing.T) {
-	// test (2 of (0, 0, 3 of (0,0, 0,0)))
+	// (2 of (0, 0, 3 of (0,0, 0,0)))
 	root := &gss.Node{
 		IsLeaf:      false,
 		Childrennum: 3,
 		T:           2,
 		Idx:         big.NewInt(0),
 		Children: []*gss.Node{
-			{IsLeaf: true, Idx: big.NewInt(1)}, // leaf nodes
-			{IsLeaf: true, Idx: big.NewInt(2)}, // leaf nodes
+			{IsLeaf: true, Idx: big.NewInt(1)},
+			{IsLeaf: true, Idx: big.NewInt(2)},
 			{
 				IsLeaf:      false,
 				Childrennum: 4,
@@ -36,12 +38,11 @@ func TestExtractFirstThreshold(t *testing.T) {
 
 	x, remainingChildren, threshold, n := ExtractFirstThreshold(root)
 
-	// output
 	fmt.Println("x = ", x)
 	fmt.Println("remainingChildren", remainingChildren[0])
 
-	fmt.Printf("Extract the threshold structure: (%d of %d)\n", threshold, n)
-	fmt.Println("the remaining substructures:")
+	fmt.Printf("The threshold structure of the stripping: (%d of %d)\n", threshold, n)
+	fmt.Println("The remaining substructures:")
 	for _, child := range remainingChildren {
 		if child.IsLeaf {
 			fmt.Printf("Leaf Node (Idx: %d)\n", child.Idx)
@@ -55,13 +56,12 @@ func TestExtractFirstThreshold(t *testing.T) {
 }
 
 func TestMul(t *testing.T) {
-	// initialize A (4x2 matrix)
+
 	A := make([][]*big.Int, 4)
 	for i := range A {
 		A[i] = make([]*big.Int, 2)
 	}
 
-	// initialize B (2x1 matrix)
 	B := make([][]*big.Int, 2)
 	for i := range B {
 		B[i] = make([]*big.Int, 1)
@@ -103,7 +103,7 @@ func TestGauss(t *testing.T) {
 }
 
 func TestLSSS(t *testing.T) {
-	// (2 of (0, 0, 2 of (0, 0,0)))
+	//  (2 of (0, 0, 2 of (0, 0,0)))
 	AA := &gss.Node{
 		IsLeaf:      false,
 		Childrennum: 3,
@@ -125,7 +125,7 @@ func TestLSSS(t *testing.T) {
 			},
 		},
 	}
-	// secret value
+
 	secret, _ := rand.Int(rand.Reader, bn128.Order)
 	// secret := big.NewInt(int64(5))
 	shares, _ := LSSSShare(secret, AA)
@@ -139,7 +139,8 @@ func TestLSSS(t *testing.T) {
 	recoverShares[0] = shares[0]
 	recoverShares[1] = shares[1]
 	// recoverShares[2] = shares[4]
-	reconS, _ := LSSSRecon(AA, recoverShares, I)
+	matrix := Convert(AA)
+	reconS, _ := LSSSRecon(matrix, recoverShares, I)
 	fmt.Println("original secret = ", secret)
 	fmt.Println("recover secret  = ", reconS)
 	if reconS.Cmp(secret) == 0 {

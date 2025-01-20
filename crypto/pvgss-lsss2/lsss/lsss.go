@@ -34,8 +34,8 @@ func LSSSShare(s *big.Int, AA *gss.Node) ([]*big.Int, error) {
 	return shares, nil
 }
 
-func LSSSRecon(AA *gss.Node, shares []*big.Int, I []int) (*big.Int, error) {
-	matrix := Convert(AA)
+func LSSSRecon(matrix [][]*big.Int, shares []*big.Int, I []int) (*big.Int, error) {
+	// matrix := Convert(AA)
 	rows := len(I)
 	recMatrix := make([][]*big.Int, rows)
 	for i := 0; i < len(I); i++ {
@@ -58,7 +58,7 @@ func LSSSRecon(AA *gss.Node, shares []*big.Int, I []int) (*big.Int, error) {
 	return s, nil
 }
 
-// Extract the first threshold structure
+// Extract Threshold structure
 func ExtractFirstThreshold(root *gss.Node) (*gss.Node, []*gss.Node, int, int) {
 	if root == nil {
 		return nil, nil, 0, 0
@@ -69,11 +69,12 @@ func ExtractFirstThreshold(root *gss.Node) (*gss.Node, []*gss.Node, int, int) {
 		return nil, []*gss.Node{root}, 0, 0
 	}
 
-	// Process the first non-leaf node and extract its threshold structure
+	// The first non-leaf node is processed and its threshold structure is extracted
 	t := root.T
 	n := root.Childrennum
 	children := root.Children
 
+	// Returns the threshold structure of the current node, as well as its children
 	return &gss.Node{
 		IsLeaf:      false,
 		Children:    nil,
@@ -84,11 +85,11 @@ func ExtractFirstThreshold(root *gss.Node) (*gss.Node, []*gss.Node, int, int) {
 }
 
 func Convert(F_A *gss.Node) [][]*big.Int {
-	// initialize L 和 M
+	// Initialize L and M
 	L := []*gss.Node{F_A}
 	M := [][]*big.Int{{big.NewInt(1)}}
 	m, d := 1, 1
-	z := 1
+	z := 1 // Control loop
 
 	for z != 0 {
 		z = 0
@@ -121,7 +122,7 @@ func Convert(F_A *gss.Node) [][]*big.Int {
 			}
 
 			m1, d1 := m, d
-			// re-initialize M 和 L
+			// Re-initialize L and M
 			M = make([][]*big.Int, m1+m2-1)
 			for i := range M {
 				M[i] = make([]*big.Int, d1+d2-1)
@@ -131,7 +132,7 @@ func Convert(F_A *gss.Node) [][]*big.Int {
 			}
 			L = make([]*gss.Node, m1+m2-1)
 
-			// updata M and L
+			// Updata M and L
 			for u := 0; u < z-1; u++ {
 				L[u] = L1[u]
 				for v := 0; v < d1; v++ {
@@ -150,7 +151,7 @@ func Convert(F_A *gss.Node) [][]*big.Int {
 				a, x := (u+1)-(z-1), (u+1)-(z-1)
 				for v := d1; v < d1+d2-1; v++ {
 					M[u][v] = big.NewInt(int64(x))
-					x = (x * a) % 1000000
+					x = (x * a) % 1000000000000000000
 				}
 			}
 
@@ -172,11 +173,12 @@ func Convert(F_A *gss.Node) [][]*big.Int {
 }
 
 func MultiplyMatrix(A, B [][]*big.Int) ([][]*big.Int, error) {
-	n := len(A)    // The number of rows of A
-	m := len(A[0]) // The number of columns in A
-	p := len(B[0]) // The number of columns in B
+	//  Get the dimensions of A and B
+	n := len(A)    // number of rows in A
+	m := len(A[0]) // number of columns in A (also number of rows in B)
+	p := len(B[0]) //number of columns of B
 
-	// check
+	// Check
 	if len(B) != m {
 		return nil, fmt.Errorf("矩阵 A 的列数和矩阵 B 的行数不匹配")
 	}
@@ -193,9 +195,10 @@ func MultiplyMatrix(A, B [][]*big.Int) ([][]*big.Int, error) {
 		for j := 0; j < p; j++ {
 			// C[i][j] = A[i][k] * B[k][j]  (k从0到m-1)
 			for k := 0; k < m; k++ {
+				// 临时存储 C[i][j] 的值
 				temp := new(big.Int)
-				temp.Mul(A[i][k], B[k][j])                           // A[i][k] * B[k][j]
-				C[i][j].Add(C[i][j], temp).Mod(C[i][j], bn128.Order) // Add up to C[i][j]
+				temp.Mul(A[i][k], B[k][j]) // A[i][k] * B[k][j]
+				C[i][j].Add(C[i][j], temp).Mod(C[i][j], bn128.Order)
 				// C[i][j].Add(C[i][j], temp)
 			}
 		}

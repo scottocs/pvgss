@@ -15,12 +15,7 @@ import (
 func TestGSS(t *testing.T) {
 	nx := 3
 	tx := 2
-	// pks := make([]*bn128.G1, 5)
-	// for i := 0; i < 5; i++ {
-	// 	s, _ := rand.Int(rand.Reader, bn128.Order)
-	// 	pks[i] = new(bn128.G1).ScalarBaseMult(s)
-	// }
-	// 创建根节点
+
 	root := NewNode(false, 3, 2, big.NewInt(int64(0)))
 	A := NewNode(true, 0, 1, big.NewInt(int64(1)))
 	B := NewNode(true, 0, 1, big.NewInt(int64(2)))
@@ -32,7 +27,6 @@ func TestGSS(t *testing.T) {
 	}
 	X.Children = Xp
 
-	// 秘密元素
 	secret, _ := rand.Int(rand.Reader, bn128.Order)
 
 	// test GrpGSSShare
@@ -42,18 +36,17 @@ func TestGSS(t *testing.T) {
 	}
 	fmt.Println("Shares generated successfully!")
 
-	// 测试生成的份额长度是否匹配
 	if len(shares) != GetLen(root) {
 		t.Errorf("Shares length mismatch: expected %d, got %d", GetLen(root), len(shares))
 	}
 
 	// test GrpGSSRecon
 	// A and B
-	Q := make([]*big.Int, 1+tx)
-	Q[0] = shares[1]
-	Q[1] = shares[2]
-	Q[2] = shares[3]
-	// Q := shares[:2]
+	// Q := make([]*big.Int, 1+tx)
+	// Q[0] = shares[1]
+	// Q[1] = shares[2]
+	// Q[2] = shares[3]
+	Q := shares[1:]
 	path := NewNode(false, 2, 2, big.NewInt(int64(0)))
 
 	path.Children = []*Node{B, X}
@@ -77,14 +70,8 @@ func TestGSS(t *testing.T) {
 	recoveredSecret, _, _ := GSSRecon(path, Q)
 	fmt.Println("orignal secret = ", secret)
 	fmt.Println("recover secret = ", recoveredSecret)
-	// 验证恢复的秘密与原始秘密是否相同
+	// Verify that the recovered secret is the same as the original secret
 	if recoveredSecret.Cmp(secret) != 0 {
 		t.Errorf("Secret reconstruction mismatch: expected %v, got %v", secret, recoveredSecret)
 	}
-	// gen1 := new(bn128.G1).ScalarBaseMult(big.NewInt(1))
-	// S := new(bn128.G1).ScalarBaseMult(secret)
-	// S1 := new(bn128.G1).ScalarMult(gen1, secret)
-	// if S.String() == S1.String() {
-	// 	fmt.Println("successfully")
-	// }
 }

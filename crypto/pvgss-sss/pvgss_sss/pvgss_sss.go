@@ -82,11 +82,11 @@ func PVGSSVerify(C []*bn128.G1, prfs *Prf, AA *gss.Node, PK []*bn128.G1, RAA *gs
 		if left.String() != right.String() {
 			return false, fmt.Errorf("check nizk proof fails")
 		}
-		recovershat, _, err := gss.GSSRecon(RAA, prfs.Shatarry[:AA.T])
+		recoverShat, _, err := gss.GSSRecon(RAA, prfs.Shatarry[:AA.T])
 		if err != nil {
 			return false, fmt.Errorf("GSSRecon fails")
 		}
-		if prfs.Shat.Cmp(recovershat) != 0 {
+		if prfs.Shat.Cmp(recoverShat) != 0 {
 			return false, fmt.Errorf("reconstruct shat dont match")
 		}
 	}
@@ -120,7 +120,7 @@ func PVGSSKeyVrf(C, decShare *bn128.G1, pk2 *bn128.G2) (bool, error) {
 	return true, nil
 }
 
-func PVGSSRecon(RAA *gss.Node, Q []*bn128.G1, C []*bn128.G1) (*bn128.G1, error) {
+func PVGSSRecon(RAA *gss.Node, Q []*bn128.G1) (*bn128.G1, error) {
 	S, _, _ := grpgss.GrpGSSRecon(RAA, Q)
 	return S, nil
 }

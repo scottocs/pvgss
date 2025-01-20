@@ -34,6 +34,7 @@ func GrpLSSSShare(S *bn128.G1, AA *gss.Node) ([]*bn128.G1, error) {
 	return shares, nil
 }
 
+// AA *gss.Node
 func GrpLSSSRecon(AA *gss.Node, shares []*bn128.G1, I []int) (*bn128.G1, error) {
 	matrix := lsss.Convert(AA)
 	rows := len(I)

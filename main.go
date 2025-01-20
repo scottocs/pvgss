@@ -139,6 +139,7 @@ func main() {
 	I0[0] = 0
 	I0[1] = 1
 	// Off-chain
+	matrix := lsss.Convert(root)
 	lisShareValid, _ := pvgss_lsss.PVGSSVerify(lC, lprfs, root, PK1, I0)
 
 	fmt.Println("Off-chain Shares verfication result = ", lisShareValid)
@@ -152,7 +153,7 @@ func main() {
 	// On-chain PVGSSVerify
 	// Input : Secret share(lC), public key(PK1), LSSS matrix, user for verification (I0), where 0 denotes Alic, 1 denotes Bob, and 2 ∼ nx + 2 denotes Watchers
 	auth22 := utils.Transact(client, privatekey1, big.NewInt(0))
-	tx22, _ := ctc.LSSSPVGSSVerify(auth22, G1sToPoints(num, lC), G1sToPoints(num, PK1), lsss.Convert(root), IntToBig(I0))
+	tx22, _ := ctc.LSSSPVGSSVerify(auth22, G1sToPoints(num, lC), G1sToPoints(num, PK1), matrix, IntToBig(I0))
 	receipt22, _ := bind.WaitMined(context.Background(), client, tx22)
 	fmt.Println("On-chain Shares verification Gas cost = ", receipt22.GasUsed)
 

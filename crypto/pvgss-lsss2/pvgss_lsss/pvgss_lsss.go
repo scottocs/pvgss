@@ -71,7 +71,7 @@ func PVGSSShare(s *big.Int, AA *gss.Node, PK []*bn128.G1) ([]*bn128.G1, *Prf, er
 	return C, prfs, nil
 }
 
-func PVGSSVerify(C []*bn128.G1, prfs *Prf, AA *gss.Node, PK []*bn128.G1, I []int) (bool, error) {
+func PVGSSVerify(C []*bn128.G1, prfs *Prf, matrix [][]*big.Int, PK []*bn128.G1, I []int) (bool, error) {
 	for i := 0; i < len(C); i++ {
 		left := prfs.Cp[i]
 		temp1 := new(bn128.G1).ScalarMult(C[i], prfs.Xc)
@@ -80,7 +80,7 @@ func PVGSSVerify(C []*bn128.G1, prfs *Prf, AA *gss.Node, PK []*bn128.G1, I []int
 		if left.String() != right.String() {
 			return false, fmt.Errorf("check nizk proof fails")
 		}
-		recoverShat, err := lsss.LSSSRecon(AA, prfs.Shatarry, I)
+		recoverShat, err := lsss.LSSSRecon(matrix, prfs.Shatarry, I)
 		if err != nil {
 			return false, fmt.Errorf("GSSRecon fails")
 		}

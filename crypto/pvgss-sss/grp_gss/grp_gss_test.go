@@ -20,7 +20,7 @@ func TestGetLen(t *testing.T) {
 		s, _ := rand.Int(rand.Reader, bn128.Order)
 		pks[i] = new(bn128.G1).ScalarBaseMult(s)
 	}
-	// 创建根节点
+
 	root := gss.NewNode(false, 3, 2, big.NewInt(int64(0)))
 	A := gss.NewNode(true, 0, 1, big.NewInt(int64(1)))
 	B := gss.NewNode(true, 0, 1, big.NewInt(int64(2)))
@@ -46,7 +46,7 @@ func TestGrpGSS(t *testing.T) {
 		s, _ := rand.Int(rand.Reader, bn128.Order)
 		pks[i] = new(bn128.G1).ScalarBaseMult(s)
 	}
-	// 创建根节点
+
 	root := gss.NewNode(false, 3, 2, big.NewInt(int64(0)))
 	A := gss.NewNode(true, 0, 1, big.NewInt(int64(1)))
 	B := gss.NewNode(true, 0, 1, big.NewInt(int64(2)))
@@ -58,7 +58,6 @@ func TestGrpGSS(t *testing.T) {
 	}
 	X.Children = Xp
 
-	// 秘密元素
 	secret, _ := rand.Int(rand.Reader, bn128.Order)
 	Secret := new(bn128.G1).ScalarBaseMult(secret)
 
@@ -69,7 +68,6 @@ func TestGrpGSS(t *testing.T) {
 	}
 	fmt.Println("Shares generated successfully!")
 
-	// 测试生成的份额长度是否匹配
 	if len(shares) != gss.GetLen(root) {
 		t.Errorf("Shares length mismatch: expected %d, got %d", gss.GetLen(root), len(shares))
 	}
@@ -89,7 +87,7 @@ func TestGrpGSS(t *testing.T) {
 	recoveredSecret, _, _ := GrpGSSRecon(path, Q)
 	fmt.Println("orignal secret = ", Secret)
 	fmt.Println("recover secret = ", recoveredSecret)
-	// 验证恢复的秘密与原始秘密是否相同
+
 	if !(recoveredSecret.String() == Secret.String()) {
 		t.Errorf("Secret reconstruction mismatch: expected %v, got %v", Secret, recoveredSecret)
 	}
@@ -112,7 +110,6 @@ func TestGrpGSS(t *testing.T) {
 	// }
 	// fmt.Println("Reconstruction successful!")
 
-	// // 验证恢复的秘密与原始秘密是否相同
 	// if !(recoveredSecret.String() == Secret.String()) {
 	// 	t.Errorf("Secret reconstruction mismatch: expected %v, got %v", Secret, recoveredSecret)
 	// }

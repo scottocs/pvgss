@@ -7,6 +7,7 @@ import (
 	bn128 "pvgss/bn128"
 
 	// "pvgss/crypto/pvgsslsss/lsss"
+
 	"pvgss/crypto/pvgss-sss/gss"
 	"testing"
 )
@@ -46,6 +47,7 @@ func TestGrpLSSS(t *testing.T) {
 	recoverShares[0] = shares[0]
 	recoverShares[1] = shares[2]
 	recoverShares[2] = shares[4]
+	// matrix := lsss.Convert(AA)
 	reconS, _ := GrpLSSSRecon(AA, recoverShares, I)
 	fmt.Println("original secret = ", S)
 	fmt.Println("recover secret  = ", reconS)
