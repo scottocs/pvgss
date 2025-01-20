@@ -429,12 +429,12 @@ contract Dex
     uint constant MINIMAL_WATCHER_STAKE = 1 ether; 
 
     struct Order {
-        address seller;
+        address seller;    //Order creator
         address tokenSell; // Token to sell (e.g., ETH)
         uint256 amountSell; // Amount to sell (e.g., 2 ETH)
         address tokenBuy; // Token to buy (e.g., USDT)
         uint256 amountBuy; // Amount to buy (e.g., 7000 USDT)
-        bool isActive;
+        bool isActive;     // Order state
     }
     // Store orders
     mapping(uint256 => Order) public orders;
@@ -442,21 +442,20 @@ contract Dex
 
 
     // State variable to track session state
-    // Active: session created  halfSwap1:one execute swap1  finishSwap1: two execute swap1
-    // halfSwap2: one execute swap2
+    // Active: session created  halfSwap1:one execute swap1  finishSwap1: two execute swap1 halfSwap2: one execute swap2
     enum SessionState { Active, halfSwap1, finishSwap1, halfSwap2, Complain, Success, Failure }
     struct Session {
         SessionState state; // Session state
         address[] exchangers; // seller as exchanger[0], buyer as exchanger[1] in the session
-        address[3] watchers; // Watchers in the session
+        address[] watchers; // Watchers in the session
         mapping(address => G1Point) shares; // decshare collect
-        mapping(address => G1Point) Cshares1;
-        mapping(address => G1Point) Cshares2;
+        mapping(address => G1Point) Cshares1; //shares from seller
+        mapping(address => G1Point) Cshares2; //shares from buyer
         uint256 expiration1; // First expiration time
         uint256 expiration2; // Second expiration time
-        bool[2] seller_flag;
-        bool[2] buyer_flag;   
-        mapping(address => bool) watcher_flag; 
+        bool[2] seller_flag; // swap flag of seller
+        bool[2] buyer_flag;  // swap flag of buyer
+        mapping(address => bool) watcher_flag; //submit flag of watcher
     }
     //Store sessions
     mapping(uint256 => Session) public sessions;
@@ -471,7 +470,7 @@ contract Dex
     event OrderCreated(uint256 orderId, address indexed seller, address tokenSell, uint256 amountSell, address tokenBuy, uint256 amountBuy);
     event Incentivized(address indexed exchanger, uint256 amount);
     event Penalized(address indexed exchanger, uint256 amount);
-    event SessionCreated(uint256 indexed orderId, address seller, address buyer, address[3] watchers, uint256 expiration1, uint256 expiration2);
+    event SessionCreated(uint256 indexed orderId, address seller, address buyer, address[] watchers, uint256 expiration1, uint256 expiration2);
 
 
     modifier onlyExchanger(uint256 id) {
@@ -578,7 +577,7 @@ contract Dex
     }
 
     // Accept order
-    function acceptOrder(uint256 orderId) external {
+    function acceptOrder(uint256 orderId, uint256 watcherNum) external {
         Order storage _order = orders[orderId];
         require(_order.isActive, "Order is not active");
         require(balances[msg.sender][_order.tokenBuy] >= _order.amountBuy, "Insufficient balance to accept order");
@@ -598,12 +597,12 @@ contract Dex
         newSession.expiration1 = block.timestamp + 6 minutes; // Set expiration1
         newSession.expiration2 = block.timestamp + 10 minutes; // Set expiration2
         
-        //add 3 watchers
+        //add watchers
         //uint256 randomIndex = uint256(keccak256(abi.encodePacked(block.timestamp, orderId)));
-        for (uint256 i = 0; i < 3; i++) {
+        for (uint256 i = 0; i < watcherNum; i++) {
             // newSession.watchers[i] = watcherList[(randomIndex + i) % watcherList.length];
-            newSession.watchers[i] = watcherList[i];
-            newSession.watcher_flag[newSession.watchers[i]] = false;
+            newSession.watchers.push(watcherList[i]);
+            newSession.watcher_flag[watcherList[i]] = false;
         }
         
         emit TokensFrozen(_order.tokenBuy, msg.sender, _order.amountBuy, orderId);
