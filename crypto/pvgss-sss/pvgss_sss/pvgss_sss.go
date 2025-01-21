@@ -86,13 +86,13 @@ func PVGSSVerify(C []*bn128.G1, prfs *Prf, AA *gss.Node, PK []*bn128.G1, RAA *gs
 		if left.String() != right.String() {
 			return false, fmt.Errorf("check nizk proof fails")
 		}
-		recoverShat, _, err := gss.GSSRecon(RAA, Q)
-		if err != nil {
-			return false, fmt.Errorf("GSSRecon fails")
-		}
-		if prfs.Shat.Cmp(recoverShat) != 0 {
-			return false, fmt.Errorf("reconstruct shat dont match")
-		}
+	}
+	recoverShat, _, err := gss.GSSRecon(RAA, Q)
+	if err != nil {
+		return false, fmt.Errorf("GSSRecon fails")
+	}
+	if prfs.Shat.Cmp(recoverShat) != 0 {
+		return false, fmt.Errorf("reconstruct shat dont match")
 	}
 	return true, nil
 }
