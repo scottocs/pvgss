@@ -18,9 +18,8 @@ import (
 	// bn128 "github.com/fentec-project/bn256"
 	bn128 "pvgss/bn128"
 
-	// lib "github.com/fentec-project/gofe/abe"
-	// "pvgss/crypto/pvgss-sss/sss"
 	"pvgss/crypto/pvgss-lsss2/lsss"
+
 	pvgss_lsss "pvgss/crypto/pvgss-lsss2/pvgss_lsss"
 	"pvgss/crypto/pvgss-sss/gss"
 	"pvgss/crypto/pvgss-sss/pvgss_sss"
@@ -99,7 +98,7 @@ func main() {
 	ctc, _ := contract.NewContract(common.HexToAddress(address.Hex()), client)
 
 	// ====================================== Preset content ======================================
-	nx := 1        // the number of Watchers
+	nx := 10       // the number of Watchers
 	tx := nx/2 + 1 // the threshold of Watchers
 	num := nx + 2  // the number of leaf nodes
 
@@ -131,16 +130,35 @@ func main() {
 		SK[i], PK1[i], PK2[i] = pvgss_lsss.PVGSSSetup()
 	}
 
+	matrix := lsss.Convert(root)
 	// 2. PVGSSShare
-	lC, lprfs, _ := pvgss_lsss.PVGSSShare(secret, root, PK1)
+	lC, lprfs, _ := pvgss_lsss.PVGSSShare(secret, matrix, PK1)
 
 	// 3. PVGSSVerify
+	// A and B
 	I0 := make([]int, 2)
 	I0[0] = 0
 	I0[1] = 1
-	// Off-chain
-	matrix := lsss.Convert(root)
-	lisShareValid, _ := pvgss_lsss.PVGSSVerify(lC, lprfs, root, PK1, I0)
+	rows0 := len(I0)
+	recMatrix0 := make([][]*big.Int, rows0)
+	for i := 0; i < rows0; i++ {
+		recMatrix0[i] = matrix[I0[i]][:rows0]
+	}
+	invRecMatrix0, _ := lsss.GaussJordanInverse(recMatrix0)
+
+	// A and Watchers
+	I00 := make([]int, 1+tx)
+	I00[0] = 0
+	for i := 0; i < tx; i++ {
+		I00[i+1] = i + 2
+	}
+	rows := len(I00)
+	recMatrix := make([][]*big.Int, rows)
+	for i := 0; i < rows; i++ {
+		recMatrix[i] = matrix[I00[i]][:rows]
+	}
+	invRecMatrix, _ := lsss.GaussJordanInverse(recMatrix)
+	lisShareValid, _ := pvgss_lsss.PVGSSVerify(lC, lprfs, invRecMatrix0, invRecMatrix, PK1, I0, I00)
 
 	fmt.Println("Off-chain Shares verfication result = ", lisShareValid)
 
@@ -169,8 +187,8 @@ func main() {
 
 	// 5. PVGSSKeyVrf
 	// Off-chain
-	lofchainIsKeyValid := make([]bool, num)
-	for i := 0; i < num; i++ {
+	lofchainIsKeyValid := make([]bool, 2)
+	for i := 0; i < 2; i++ {
 		lofchainIsKeyValid[i], _ = pvgss_lsss.PVGSSKeyVrf(lC[i], ldecShares[i], PK2[i])
 	}
 	fmt.Println("Off-chain DecShares verification result =  = ", lofchainIsKeyValid)
@@ -204,14 +222,27 @@ func main() {
 	// Case1: A and B
 	path1 := gss.NewNode(false, 2, 2, big.NewInt(int64(0)))
 	path1.Children = []*gss.Node{A, B}
+	I1 := make([]int, 2)
+	I1[0] = 0
+	I1[1] = 1
 
 	// Case2: A and Watchers
 	path2 := gss.NewNode(false, 2, 2, big.NewInt(int64(0)))
 	path2.Children = []*gss.Node{A, X}
+	I2 := make([]int, 1+tx)
+	I2[0] = 0
+	for i := 0; i < tx; i++ {
+		I2[i+1] = i + 2
+	}
 
 	// Case3: B and Watchers
 	path3 := gss.NewNode(false, 2, 2, big.NewInt(int64(0)))
 	path3.Children = []*gss.Node{B, X}
+	I3 := make([]int, 1+tx)
+	I3[0] = 1
+	for i := 0; i < tx; i++ {
+		I3[i+1] = i + 2
+	}
 
 	// On-chain: construct the access control structure
 	// On-chain: construct paths that satisfy the access control structure
@@ -248,7 +279,7 @@ func main() {
 
 	// 3. PVGSSVerify
 	// Off-chain
-	isShareValid, _ := pvgss_sss.PVGSSVerify(C, prfs, root, PK1, path1)
+	isShareValid, _ := pvgss_sss.PVGSSVerify(C, prfs, root, PK1, path1, I1)
 
 	fmt.Println("Off-chain Shares verfication result = ", isShareValid)
 

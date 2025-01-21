@@ -14,12 +14,15 @@ import (
 	"pvgss/crypto/pvgss-sss/gss"
 
 	"github.com/stretchr/testify/assert"
+	// "github.com/stretchr/testify/assert"
 )
 
 func TestPVGSS(t *testing.T) {
 	// 构造测试树 (2 of (0, 0, 2 of (0, 0,0)))
 	// 1. PVGSSSetup
 	num := 5
+	tx := 2
+	nx := 3
 	SK := make([]*big.Int, num)
 	PK1 := make([]*bn128.G1, num)
 	PK2 := make([]*bn128.G2, num)
@@ -36,8 +39,8 @@ func TestPVGSS(t *testing.T) {
 			{IsLeaf: true, Idx: big.NewInt(2)}, // 叶子节点
 			{
 				IsLeaf:      false,
-				Childrennum: 3,
-				T:           2,
+				Childrennum: nx,
+				T:           tx,
 				Idx:         big.NewInt(3),
 				Children: []*gss.Node{
 					{IsLeaf: true, Idx: big.NewInt(1)},
@@ -48,19 +51,38 @@ func TestPVGSS(t *testing.T) {
 		},
 	}
 	// secret
+	matrix := lsss.Convert(AA)
 	s, _ := rand.Int(rand.Reader, bn128.Order)
 	// 2. PVGSSShare
-	C, prfs, err := PVGSSShare(s, AA, PK1)
+	C, prfs, err := PVGSSShare(s, matrix, PK1)
 	if err != nil {
 		t.Fatalf("pvgss failed to share: %v\n", err)
 	}
 
 	I0 := make([]int, 2)
-	I0[0] = 0
-	I0[1] = 1
-	martix := lsss.Convert(AA)
+	for i := 0; i < 2; i++ {
+		I0[i] = i
+	}
+	rows0 := len(I0)
+	recMatrix0 := make([][]*big.Int, rows0)
+	for i := 0; i < rows0; i++ {
+		recMatrix0[i] = matrix[I0[i]][:rows0]
+	}
+	invRecMatrix0, _ := lsss.GaussJordanInverse(recMatrix0)
+	I11 := make([]int, 1+tx)
+	I11[0] = 0
+	for i := 0; i < tx; i++ {
+		I11[i+1] = i + 2
+	}
+	rows1 := len(I11)
+	recMatrix1 := make([][]*big.Int, rows1)
+	for i := 0; i < rows1; i++ {
+		recMatrix1[i] = matrix[I11[i]][:rows1]
+	}
+	invRecMatrix1, _ := lsss.GaussJordanInverse(recMatrix1)
+
 	// 3. PVGSSVerify
-	isShareValid, err := PVGSSVerify(C, prfs, martix, PK1, I0)
+	isShareValid, err := PVGSSVerify(C, prfs, invRecMatrix0, invRecMatrix1, PK1, I0, I11)
 	if err != nil || isShareValid == false {
 		t.Fatalf("pvgss share verify failed: %v\n", err)
 	}
@@ -90,11 +112,19 @@ func TestPVGSS(t *testing.T) {
 	// 6. PVGSSRecon
 	// matrix := lsss.Convert(AA)
 	// A and B
-	I1 := I0
+	I1 := make([]int, 2)
+	I1[0] = 0
+	I1[1] = 1
 	Q1 := make([]*bn128.G1, 2)
 	Q1[0] = decShares[0]
 	Q1[1] = decShares[1]
-	reconS1, _ := PVGSSRecon(AA, Q1, I1)
+	rows := len(I1)
+	recMatrix := make([][]*big.Int, rows)
+	for i := 0; i < rows; i++ {
+		recMatrix[i] = matrix[I1[i]][:rows]
+	}
+	invRecMatrix, _ := lsss.GaussJordanInverse(recMatrix)
+	reconS1, _ := PVGSSRecon(invRecMatrix, Q1, I1)
 
 	assert.Equal(t, onrgnS.String(), reconS1.String())
 	if onrgnS.String() == reconS1.String() {
@@ -110,7 +140,13 @@ func TestPVGSS(t *testing.T) {
 	Q2[0] = decShares[0]
 	Q2[1] = decShares[2]
 	Q2[2] = decShares[3]
-	reconS2, _ := PVGSSRecon(AA, Q2, I2)
+	rows = len(I2)
+	recMatrix = make([][]*big.Int, rows)
+	for i := 0; i < rows; i++ {
+		recMatrix[i] = matrix[I2[i]][:rows]
+	}
+	invRecMatrix, _ = lsss.GaussJordanInverse(recMatrix)
+	reconS2, _ := PVGSSRecon(invRecMatrix, Q2, I2)
 	assert.Equal(t, onrgnS.String(), reconS2.String())
 	if onrgnS.String() == reconS2.String() {
 		fmt.Print("A and Watchers reconstruct secret secessfully!\n")
@@ -125,8 +161,13 @@ func TestPVGSS(t *testing.T) {
 	Q3[0] = decShares[1]
 	Q3[1] = decShares[2]
 	Q3[2] = decShares[3]
-
-	reconS3, _ := PVGSSRecon(AA, Q3, I3)
+	rows = len(I3)
+	recMatrix = make([][]*big.Int, rows)
+	for i := 0; i < rows; i++ {
+		recMatrix[i] = matrix[I3[i]][:rows]
+	}
+	invRecMatrix, _ = lsss.GaussJordanInverse(recMatrix)
+	reconS3, _ := PVGSSRecon(invRecMatrix, Q3, I3)
 	assert.Equal(t, onrgnS.String(), reconS3.String())
 	if onrgnS.String() == reconS3.String() {
 		fmt.Print("B and Watchers reconstruct secret secessfully!\n")
@@ -160,7 +201,7 @@ func TestLSSSPVGSS(t *testing.T) {
 	PK1 := make([]*bn128.G1, num)
 	PK2 := make([]*bn128.G2, num)
 
-	numRuns := 1 // Number of repetitions
+	numRuns := 100 // Number of repetitions
 	var totalDuration time.Duration
 
 	// 1. PVGSSSetup
@@ -168,12 +209,14 @@ func TestLSSSPVGSS(t *testing.T) {
 		SK[i], PK1[i], PK2[i] = PVGSSSetup()
 	}
 
+	matrix := lsss.Convert(root)
+
 	// 2. PVGSSShare
 	// test PVGSShare
 
 	// startTime := time.Now()
 	// for i := 0; i < numRuns; i++ {
-	// 	_, _, _ = PVGSSShare(secret, root, PK1)
+	// 	_, _, _ = PVGSSShare(secret, matrix, PK1)
 	// }
 	// endTime := time.Now()
 	// totalDuration = endTime.Sub(startTime)
@@ -183,17 +226,37 @@ func TestLSSSPVGSS(t *testing.T) {
 
 	// fmt.Printf("%d Wathcers, %d threshold : average PVGSSShare time over %d runs: %s\n", nx, tx, numRuns, averageDuration)
 
-	C, prfs, _ := PVGSSShare(secret, root, PK1)
+	C, prfs, _ := PVGSSShare(secret, matrix, PK1)
 
 	// 3. PVGSSVerify
+	// A and B
 	I0 := make([]int, 2)
 	I0[0] = 0
 	I0[1] = 1
-	matrix := lsss.Convert(root)
+	rows0 := len(I0)
+	recMatrix0 := make([][]*big.Int, rows0)
+	for i := 0; i < rows0; i++ {
+		recMatrix0[i] = matrix[I0[i]][:rows0]
+	}
+	invRecMatrix0, _ := lsss.GaussJordanInverse(recMatrix0)
+
+	// A and Watchers
+	I00 := make([]int, 1+tx)
+	I00[0] = 0
+	for i := 0; i < tx; i++ {
+		I00[i+1] = i + 2
+	}
+	rows := len(I00)
+	recMatrix := make([][]*big.Int, rows)
+	for i := 0; i < rows; i++ {
+		recMatrix[i] = matrix[I00[i]][:rows]
+	}
+	invRecMatrix, _ := lsss.GaussJordanInverse(recMatrix)
 
 	// startTime := time.Now()
 	// for i := 0; i < numRuns; i++ {
-	// 	_, _ = PVGSSVerify(C, prfs, matrix, PK1, I0)
+	// 	// A and Watchers
+	// 	_, _ = PVGSSVerify(C, prfs, invRecMatrix0, invRecMatrix, PK1, I0, I00)
 	// }
 	// endTime := time.Now()
 	// totalDuration = endTime.Sub(startTime)
@@ -203,7 +266,7 @@ func TestLSSSPVGSS(t *testing.T) {
 	// fmt.Printf("%d Wathcers, %d threshold : average PVGSSVerify time over %d runs: %s\n", nx, tx, numRuns, averageDuration)
 
 	// Off-chain
-	isShareValid, _ := PVGSSVerify(C, prfs, matrix, PK1, I0)
+	isShareValid, _ := PVGSSVerify(C, prfs, invRecMatrix0, invRecMatrix, PK1, I0, I00)
 
 	fmt.Println("Off-chain Shares verfication result = ", isShareValid)
 
@@ -258,9 +321,17 @@ func TestLSSSPVGSS(t *testing.T) {
 		Q[i] = decShares[I[i]]
 	}
 
+	rows = len(I)
+	recMatrix = make([][]*big.Int, rows)
+	for i := 0; i < rows; i++ {
+		recMatrix[i] = matrix[I[i]][:rows]
+	}
+	invRecMatrix, _ = lsss.GaussJordanInverse(recMatrix)
+
+	fmt.Print("start PVFSSRecon\n")
 	startTime := time.Now()
 	for i := 0; i < numRuns; i++ {
-		_, _ = PVGSSRecon(root, Q, I)
+		_, _ = PVGSSRecon(invRecMatrix, Q, I)
 	}
 	endTime := time.Now()
 	totalDuration = endTime.Sub(startTime)
@@ -269,7 +340,7 @@ func TestLSSSPVGSS(t *testing.T) {
 
 	fmt.Printf("%d Wathcers, %d watchers and Alice reconstruct the secret : average PVGSSRecon time over %d runs: %s\n", nx, tx, numRuns, averageDuration)
 
-	reconS, _ := PVGSSRecon(root, Q, I)
+	reconS, _ := PVGSSRecon(invRecMatrix, Q, I)
 	if onrgnS.String() == reconS.String() {
 		fmt.Print("A and Watchers reconstruct secret secessfully!\n")
 	}

@@ -8,6 +8,7 @@ import (
 
 	// "pvgss/crypto/pvgsslsss/lsss"
 
+	"pvgss/crypto/pvgss-lsss2/lsss"
 	"pvgss/crypto/pvgss-sss/gss"
 	"testing"
 )
@@ -47,8 +48,14 @@ func TestGrpLSSS(t *testing.T) {
 	recoverShares[0] = shares[0]
 	recoverShares[1] = shares[2]
 	recoverShares[2] = shares[4]
-	// matrix := lsss.Convert(AA)
-	reconS, _ := GrpLSSSRecon(AA, recoverShares, I)
+	rows := len(I)
+	matrix := lsss.Convert(AA)
+	recMatrix := make([][]*big.Int, rows)
+	for i := 0; i < rows; i++ {
+		recMatrix[i] = matrix[I[i]][:rows]
+	}
+	invRecMatrix, _ := lsss.GaussJordanInverse(recMatrix)
+	reconS, _ := GrpLSSSRecon(invRecMatrix, recoverShares, I)
 	fmt.Println("original secret = ", S)
 	fmt.Println("recover secret  = ", reconS)
 	if reconS.String() == S.String() {

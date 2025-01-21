@@ -63,9 +63,30 @@ func TestPVGSS(t *testing.T) {
 	path1 := gss.NewNode(false, 2, 2, big.NewInt(int64(0)))
 	path1.Children = []*gss.Node{A, B}
 
+	I1 := make([]int, 2)
+	I1[0] = 0
+	I1[1] = 1
+
+	path2 := gss.NewNode(false, 2, 2, big.NewInt(int64(0)))
+	path2.Children = []*gss.Node{A, X}
+
+	I2 := make([]int, tx+1)
+	I2[0] = 0
+	for i := 0; i < tx; i++ {
+		I2[i+1] = i + 2
+	}
+
+	// Verify all shares
+	// the satifying path = root
+	I := make([]int, nx+2)
+	// I[0] = 0
+	for i := 0; i < nx+2; i++ {
+		I[i] = i
+	}
+
 	// startTime := time.Now()
 	// for i := 0; i < numRuns; i++ {
-	// 	_, _ = PVGSSVerify(C, prfs, root, PK1, path1)
+	// 	_, _ = PVGSSVerify(C, prfs, root, PK1, root, I)
 	// }
 	// endTime := time.Now()
 	// totalDuration = endTime.Sub(startTime)
@@ -74,7 +95,7 @@ func TestPVGSS(t *testing.T) {
 
 	// fmt.Printf("%d Wathcers, %d threshold : average PVGSSVerify time over %d runs: %s\n", nx, tx, numRuns, averageDuration)
 
-	isShareValid, err := PVGSSVerify(C, prfs, root, PK1, path1)
+	isShareValid, err := PVGSSVerify(C, prfs, root, PK1, root, I)
 	if err != nil || isShareValid == false {
 		t.Fatalf("pvgss share verify failed: %v\n", err)
 	}
@@ -145,7 +166,7 @@ func TestPVGSS(t *testing.T) {
 	for i := 1; i < tx+1; i++ {
 		Q2[i] = decShares[i+1]
 	}
-	path2 := gss.NewNode(false, 2, 2, big.NewInt(int64(0)))
+	path2 = gss.NewNode(false, 2, 2, big.NewInt(int64(0)))
 	path2.Children = []*gss.Node{A, X}
 
 	startTime := time.Now()

@@ -8,7 +8,6 @@ import (
 	bn128 "pvgss/bn128"
 	"pvgss/crypto/pvgss-lsss2/grp_lsss"
 	"pvgss/crypto/pvgss-lsss2/lsss"
-	"pvgss/crypto/pvgss-sss/gss"
 )
 
 type Prf struct {
@@ -38,15 +37,15 @@ func PVGSSSetup() (*big.Int, *bn128.G1, *bn128.G2) {
 	return sk, pk1, pk2
 }
 
-func PVGSSShare(s *big.Int, AA *gss.Node, PK []*bn128.G1) ([]*bn128.G1, *Prf, error) {
+func PVGSSShare(s *big.Int, matrix [][]*big.Int, PK []*bn128.G1) ([]*bn128.G1, *Prf, error) {
 	C := make([]*bn128.G1, len(PK))
 	Cp := make([]*bn128.G1, len(PK))
-	shares, _ := lsss.LSSSShare(s, AA)
+	shares, _ := lsss.LSSSShare(s, matrix)
 	for i := 0; i < len(PK); i++ {
 		C[i] = new(bn128.G1).ScalarMult(PK[i], shares[i])
 	}
 	sp, _ := rand.Int(rand.Reader, bn128.Order)
-	sharesp, _ := lsss.LSSSShare(sp, AA)
+	sharesp, _ := lsss.LSSSShare(sp, matrix)
 	for i := 0; i < len(PK); i++ {
 		Cp[i] = new(bn128.G1).ScalarMult(PK[i], sharesp[i])
 	}
@@ -71,7 +70,7 @@ func PVGSSShare(s *big.Int, AA *gss.Node, PK []*bn128.G1) ([]*bn128.G1, *Prf, er
 	return C, prfs, nil
 }
 
-func PVGSSVerify(C []*bn128.G1, prfs *Prf, matrix [][]*big.Int, PK []*bn128.G1, I []int) (bool, error) {
+func PVGSSVerify(C []*bn128.G1, prfs *Prf, invmatrix0, invmatrix1 [][]*big.Int, PK []*bn128.G1, I0, I1 []int) (bool, error) {
 	for i := 0; i < len(C); i++ {
 		left := prfs.Cp[i]
 		temp1 := new(bn128.G1).ScalarMult(C[i], prfs.Xc)
@@ -80,13 +79,31 @@ func PVGSSVerify(C []*bn128.G1, prfs *Prf, matrix [][]*big.Int, PK []*bn128.G1, 
 		if left.String() != right.String() {
 			return false, fmt.Errorf("check nizk proof fails")
 		}
-		recoverShat, err := lsss.LSSSRecon(matrix, prfs.Shatarry, I)
-		if err != nil {
-			return false, fmt.Errorf("GSSRecon fails")
-		}
-		if prfs.Shat.Cmp(recoverShat) != 0 {
-			return false, fmt.Errorf("reconstruct shat dont match")
-		}
+	}
+	// Alice and Bob
+	// I0 := make([]int, len(invmatrix0))
+	// for i := 0; i < len(invmatrix0); i++ {
+	// 	I0[0] = i
+	// }
+	recoverShat, err := lsss.LSSSRecon(invmatrix0, prfs.Shatarry, I0)
+	if err != nil {
+		return false, fmt.Errorf("GSSRecon fails")
+	}
+	if prfs.Shat.Cmp(recoverShat) != 0 {
+		return false, fmt.Errorf("reconstruct shat dont match")
+	}
+	// Alice and Watchers
+	// I1 := make([]int, len(invmatrix1))
+	// I1[0] = 0
+	// for i := 0; i < len(invmatrix1); i++ {
+	// 	I1[i+1] = i + 2
+	// }
+	recoverShat, err = lsss.LSSSRecon(invmatrix1, prfs.Shatarry, I1)
+	if err != nil {
+		return false, fmt.Errorf("GSSRecon fails")
+	}
+	if prfs.Shat.Cmp(recoverShat) != 0 {
+		return false, fmt.Errorf("reconstruct shat dont match")
 	}
 	return true, nil
 }
@@ -118,7 +135,7 @@ func PVGSSKeyVrf(C, decShare *bn128.G1, pk2 *bn128.G2) (bool, error) {
 	return true, nil
 }
 
-func PVGSSRecon(AA *gss.Node, Q []*bn128.G1, I []int) (*bn128.G1, error) {
+func PVGSSRecon(AA [][]*big.Int, Q []*bn128.G1, I []int) (*bn128.G1, error) {
 	S, _ := grp_lsss.GrpLSSSRecon(AA, Q, I)
 	return S, nil
 }
