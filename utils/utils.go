@@ -3,7 +3,6 @@ package utils
 import (
 	"context"
 	"crypto/ecdsa"
-	"encoding/hex"
 	"fmt"
 	"log"
 	"math/big"
@@ -224,56 +223,56 @@ func parseEvent(dexInstance *Dex.Dex, vLog types.Log) {
 	fmt.Printf("Unknown Event: %+v\n", vLog)
 }
 
-func LoadAccountsFromEnv(accountNum int) ([]*big.Int, []*bn128.G1, []*bn128.G2, error) {
-	err := godotenv.Load(".env")
-	if err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to load .env file: %v", err)
-	}
+// func LoadAccountsFromEnv(accountNum int) ([]*big.Int, []*bn128.G1, []*bn128.G2, error) {
+// 	err := godotenv.Load(".env")
+// 	if err != nil {
+// 		return nil, nil, nil, fmt.Errorf("failed to load .env file: %v", err)
+// 	}
 
-	envVars, err := godotenv.Read(".env")
-	if err != nil {
-		envVars = make(map[string]string)
-	}
+// 	envVars, err := godotenv.Read(".env")
+// 	if err != nil {
+// 		envVars = make(map[string]string)
+// 	}
 
-	allSK := make([]*big.Int, accountNum)
-	allPK1 := make([]*bn128.G1, accountNum)
-	allPK2 := make([]*bn128.G2, accountNum)
+// 	allSK := make([]*big.Int, accountNum)
+// 	allPK1 := make([]*bn128.G1, accountNum)
+// 	allPK2 := make([]*bn128.G2, accountNum)
 
-	for i := 0; i < accountNum; i++ {
-		envVarPrefix := fmt.Sprintf("ACCOUNT_%d", i+1)
+// 	for i := 0; i < accountNum; i++ {
+// 		envVarPrefix := fmt.Sprintf("ACCOUNT_%d", i+1)
 
-		skHex := envVars[envVarPrefix+"_SK"]
-		skBytes, err := hex.DecodeString(skHex)
-		if err != nil {
-			return nil, nil, nil, fmt.Errorf("failed to decode SK hex string: %v", err)
-		}
-		allSK[i] = new(big.Int).SetBytes(skBytes)
+// 		skHex := envVars[envVarPrefix+"_SK"]
+// 		skBytes, err := hex.DecodeString(skHex)
+// 		if err != nil {
+// 			return nil, nil, nil, fmt.Errorf("failed to decode SK hex string: %v", err)
+// 		}
+// 		allSK[i] = new(big.Int).SetBytes(skBytes)
 
-		pk1Hex := envVars[envVarPrefix+"_PK1"]
-		pk1Bytes, err := hex.DecodeString(pk1Hex)
-		if err != nil {
-			return nil, nil, nil, fmt.Errorf("failed to decode PK1 hex string: %v", err)
-		}
-		allPK1[i] = new(bn128.G1)
-		_, err = allPK1[i].Unmarshal(pk1Bytes)
-		if err != nil {
-			return nil, nil, nil, fmt.Errorf("failed to unmarshal PK1: %v", err)
-		}
+// 		pk1Hex := envVars[envVarPrefix+"_PK1"]
+// 		pk1Bytes, err := hex.DecodeString(pk1Hex)
+// 		if err != nil {
+// 			return nil, nil, nil, fmt.Errorf("failed to decode PK1 hex string: %v", err)
+// 		}
+// 		allPK1[i] = new(bn128.G1)
+// 		_, err = allPK1[i].Unmarshal(pk1Bytes)
+// 		if err != nil {
+// 			return nil, nil, nil, fmt.Errorf("failed to unmarshal PK1: %v", err)
+// 		}
 
-		pk2Hex := envVars[envVarPrefix+"_PK2"]
-		pk2Bytes, err := hex.DecodeString(pk2Hex)
-		if err != nil {
-			return nil, nil, nil, fmt.Errorf("failed to decode PK2 hex string: %v", err)
-		}
-		allPK2[i] = new(bn128.G2)
-		_, err = allPK2[i].Unmarshal(pk2Bytes)
-		if err != nil {
-			return nil, nil, nil, fmt.Errorf("failed to unmarshal PK2: %v", err)
-		}
-	}
+// 		pk2Hex := envVars[envVarPrefix+"_PK2"]
+// 		pk2Bytes, err := hex.DecodeString(pk2Hex)
+// 		if err != nil {
+// 			return nil, nil, nil, fmt.Errorf("failed to decode PK2 hex string: %v", err)
+// 		}
+// 		allPK2[i] = new(bn128.G2)
+// 		_, err = allPK2[i].Unmarshal(pk2Bytes)
+// 		if err != nil {
+// 			return nil, nil, nil, fmt.Errorf("failed to unmarshal PK2: %v", err)
+// 		}
+// 	}
 
-	return allSK, allPK1, allPK2, nil
-}
+// 	return allSK, allPK1, allPK2, nil
+// }
 
 func G1ToPoint(point *bn128.G1) Dex.DexG1Point {
 	// Marshal the G1 point to get the X and Y coordinates as bytes
@@ -324,7 +323,7 @@ func G2ToPoint(point *bn128.G2) Dex.DexG2Point {
 }
 
 // deploy new dex contract and register and deposit
-func DepolyAndRegister() (common.Address, common.Address, common.Address, error) {
+func DepolyAndRegister(allPK1 []*bn128.G1, allPK2 []*bn128.G2) (common.Address, common.Address, common.Address, error) {
 	privateKeys := []string{
 		GetENV("PRIVATE_KEY_1"),
 		GetENV("PRIVATE_KEY_2"),
@@ -338,6 +337,14 @@ func DepolyAndRegister() (common.Address, common.Address, common.Address, error)
 		GetENV("PRIVATE_KEY_10"),
 		GetENV("PRIVATE_KEY_11"),
 		GetENV("PRIVATE_KEY_12"),
+		GetENV("PRIVATE_KEY_13"),
+		GetENV("PRIVATE_KEY_14"),
+		GetENV("PRIVATE_KEY_15"),
+		GetENV("PRIVATE_KEY_16"),
+		GetENV("PRIVATE_KEY_17"),
+		GetENV("PRIVATE_KEY_18"),
+		GetENV("PRIVATE_KEY_19"),
+		GetENV("PRIVATE_KEY_20"),
 	}
 
 	client, err := ethclient.Dial("ws://127.0.0.1:8545")
@@ -354,11 +361,11 @@ func DepolyAndRegister() (common.Address, common.Address, common.Address, error)
 	deployTX = Transact(client, privateKeys[1], big.NewInt(0))
 	pvusdt_contract_address, _ := Deploy(client, "PVUSDT", deployTX)
 
-	accountNum := 12
-	_, allPK1, allPK2, err := LoadAccountsFromEnv(accountNum)
-	if err != nil {
-		log.Fatalf("Failed to load accounts: %v", err)
-	}
+	// accountNum := 20
+	// _, allPK1, allPK2, err := LoadAccountsFromEnv(accountNum)
+	// if err != nil {
+	// 	log.Fatalf("Failed to load accounts: %v", err)
+	// }
 
 	dexInstance, _ := Dex.NewDex(dex_contract_address, client)
 	pvethInstance, _ := PVETH.NewPVETH(pveth_contract_address, client)
