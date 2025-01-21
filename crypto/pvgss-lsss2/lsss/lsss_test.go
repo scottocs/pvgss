@@ -128,7 +128,8 @@ func TestLSSS(t *testing.T) {
 
 	secret, _ := rand.Int(rand.Reader, bn128.Order)
 	// secret := big.NewInt(int64(5))
-	shares, _ := LSSSShare(secret, AA)
+	matrix := Convert(AA)
+	shares, _ := LSSSShare(secret, matrix)
 	// fmt.Println("shares = ", shares)
 
 	I := make([]int, 2)
@@ -139,8 +140,14 @@ func TestLSSS(t *testing.T) {
 	recoverShares[0] = shares[0]
 	recoverShares[1] = shares[1]
 	// recoverShares[2] = shares[4]
-	matrix := Convert(AA)
-	reconS, _ := LSSSRecon(matrix, recoverShares, I)
+	rows := len(I)
+	// matrix := Convert(AA)
+	recMatrix := make([][]*big.Int, rows)
+	for i := 0; i < rows; i++ {
+		recMatrix[i] = matrix[I[i]][:rows]
+	}
+	invRecMatrix, _ := GaussJordanInverse(recMatrix)
+	reconS, _ := LSSSRecon(invRecMatrix, recoverShares, I)
 	fmt.Println("original secret = ", secret)
 	fmt.Println("recover secret  = ", reconS)
 	if reconS.Cmp(secret) == 0 {

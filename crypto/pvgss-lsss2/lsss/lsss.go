@@ -8,8 +8,8 @@ import (
 	"pvgss/crypto/pvgss-sss/gss"
 )
 
-func LSSSShare(s *big.Int, AA *gss.Node) ([]*big.Int, error) {
-	matrix := Convert(AA)
+func LSSSShare(s *big.Int, matrix [][]*big.Int) ([]*big.Int, error) {
+	// matrix := Convert(AA)
 	if len(matrix) == 0 || len(matrix[0]) == 0 {
 		return nil, fmt.Errorf("Matrix is empty")
 	}
@@ -34,14 +34,14 @@ func LSSSShare(s *big.Int, AA *gss.Node) ([]*big.Int, error) {
 	return shares, nil
 }
 
-func LSSSRecon(matrix [][]*big.Int, shares []*big.Int, I []int) (*big.Int, error) {
+func LSSSRecon(invRecMatrix [][]*big.Int, shares []*big.Int, I []int) (*big.Int, error) {
 	// matrix := Convert(AA)
 	rows := len(I)
-	recMatrix := make([][]*big.Int, rows)
-	for i := 0; i < len(I); i++ {
-		recMatrix[i] = matrix[I[i]][:rows]
-	}
-	invRecMatrix, _ := GaussJordanInverse(recMatrix)
+	// recMatrix := make([][]*big.Int, rows)
+	// for i := 0; i < len(I); i++ {
+	// 	recMatrix[i] = matrix[I[i]][:rows]
+	// }
+	// invRecMatrix, _ := GaussJordanInverse(recMatrix)
 	one := make([][]*big.Int, 1)
 	one[0] = make([]*big.Int, rows)
 	for i := 0; i < rows; i++ {
@@ -193,9 +193,8 @@ func MultiplyMatrix(A, B [][]*big.Int) ([][]*big.Int, error) {
 
 	for i := 0; i < n; i++ {
 		for j := 0; j < p; j++ {
-			// C[i][j] = A[i][k] * B[k][j]  (k从0到m-1)
+			// C[i][j] = A[i][k] * B[k][j]  (from k0 to m-1)
 			for k := 0; k < m; k++ {
-				// 临时存储 C[i][j] 的值
 				temp := new(big.Int)
 				temp.Mul(A[i][k], B[k][j]) // A[i][k] * B[k][j]
 				C[i][j].Add(C[i][j], temp).Mod(C[i][j], bn128.Order)
@@ -209,6 +208,7 @@ func MultiplyMatrix(A, B [][]*big.Int) ([][]*big.Int, error) {
 
 // GaussJordanInverse computes the inverse of matrix A using Gauss-Jordan elimination.
 // It returns the inverse matrix if it exists, otherwise returns an error.
+// @TODO to optimize in the future
 func GaussJordanInverse(A [][]*big.Int) ([][]*big.Int, error) {
 	p := bn128.Order
 	// Check if the matrix is square
@@ -229,6 +229,7 @@ func GaussJordanInverse(A [][]*big.Int) ([][]*big.Int, error) {
 		}
 		augmented[i][n+i] = big.NewInt(1) // Set the right side to the identity matrix
 	}
+	// fmt.Print("for1 end\n")
 
 	// Perform Gauss-Jordan elimination
 	for i := 0; i < n; i++ {
@@ -268,6 +269,7 @@ func GaussJordanInverse(A [][]*big.Int) ([][]*big.Int, error) {
 			}
 		}
 	}
+	// fmt.Print("for2 end\n")
 
 	// Extract the inverse matrix (right side of the augmented matrix)
 	inverse := make([][]*big.Int, n)
@@ -277,6 +279,7 @@ func GaussJordanInverse(A [][]*big.Int) ([][]*big.Int, error) {
 			inverse[i][j] = new(big.Int).Set(augmented[i][n+j])
 		}
 	}
+	// fmt.Print("for3 end\n")
 
 	return inverse, nil
 }

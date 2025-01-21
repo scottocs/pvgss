@@ -35,14 +35,14 @@ func GrpLSSSShare(S *bn128.G1, AA *gss.Node) ([]*bn128.G1, error) {
 }
 
 // AA *gss.Node
-func GrpLSSSRecon(AA *gss.Node, shares []*bn128.G1, I []int) (*bn128.G1, error) {
-	matrix := lsss.Convert(AA)
+func GrpLSSSRecon(invRecMatrix [][]*big.Int, shares []*bn128.G1, I []int) (*bn128.G1, error) {
+	// matrix := lsss.Convert(AA)
 	rows := len(I)
-	recMatrix := make([][]*big.Int, rows)
-	for i := 0; i < len(I); i++ {
-		recMatrix[i] = matrix[I[i]][:rows]
-	}
-	invRecMatrix, _ := lsss.GaussJordanInverse(recMatrix)
+	// recMatrix := make([][]*big.Int, rows)
+	// for i := 0; i < len(I); i++ {
+	// 	recMatrix[i] = matrix[I[i]][:rows]
+	// }
+	// invRecMatrix, _ := lsss.GaussJordanInverse(recMatrix)
 	one := make([][]*big.Int, 1)
 	one[0] = make([]*big.Int, rows)
 	for i := 0; i < rows; i++ {
