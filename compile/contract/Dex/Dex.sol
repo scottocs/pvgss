@@ -177,8 +177,6 @@ contract Dex
     bool[] VerifyResult;
     bool[] KeyVerifyResult;
 
-    Prf prf;
-
     mapping(uint256 => Node) public nodes;
     uint256[] public XChildId;
     uint256[] public rootChildId;
@@ -342,7 +340,16 @@ contract Dex
     }
 
     // ===== PVGSS-SSS Verification =====
-    function PVGSSVerify(G1Point[] memory C,G1Point[] memory PK, uint256[] memory I) public payable returns (bool) {
+    function PVGSSVerify(G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray,G1Point[] memory C,G1Point[] memory PK, uint256[] memory I) public payable returns (bool) {
+        Prf memory prf ;
+        prf.Cp = new G1Point[](shatArray.length);
+        prf.ShatArray = new uint256[](shatArray.length);
+        for (uint i = 0; i < shatArray.length;i++){
+            prf.Cp[i] = cp[i];
+            prf.ShatArray[i] = shatArray[i];
+        }
+        prf.Xc = xc;
+        prf.Shat = shat;
         uint256 nodeId = 0;
         uint256 startIdx = 0;
         uint256[] memory Q = new uint256[](I.length);
@@ -365,28 +372,11 @@ contract Dex
             return false;
         }
         VerifyResult.push(true);
-
-        // delete proof
-        delete prf.Cp;
-        delete prf.ShatArray;
         return true;
     }
 
     function GetVerifyResult() public view returns (bool []memory) {
         return VerifyResult;
-    }
-
-    // Upload Prfs
-    function UploadProof(G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray) public payable {
-        // delete proof
-        delete prf.Cp;
-        delete prf.ShatArray;
-        for (uint i = 0; i < shatArray.length;i++){
-            prf.Cp.push(cp[i]);
-            prf.ShatArray.push(shatArray[i]);
-        }
-        prf.Xc = xc;
-        prf.Shat = shat;
     }
 
     function PVGSSKeyVrf(G1Point memory C, G1Point memory decShare, G2Point memory pk2,G2Point memory g2) public payable returns (bool) {
@@ -403,146 +393,140 @@ contract Dex
 
     // ========================== PVGSS-LSSS Verification ===============================
 
-    bool[] LSSSVerifyResult;
-    Prf Lprf;
-    // uint256[][] public Matrix;
-    function LSSSPVGSSVerify(G1Point[] memory C,G1Point[] memory PK, uint256[][] memory invmatrix, uint256[][] memory invmatrix1 ,uint256[] memory I, uint256[] memory I1) public payable returns (bool) {
-        for(uint i = 0; i < Lprf.ShatArray.length;i++) {
-            G1Point memory left = Lprf.Cp[i];
-            G1Point memory right = g1add(g1mul(C[i],Lprf.Xc),g1mul(PK[i],Lprf.ShatArray[i]));
-            if (!equals(left,right)) {
-                LSSSVerifyResult.push(false);
-                return false;
-            }
-        }
-        // Alice and Bob
-        //uint256 recovershat = LSSSRecon(invmatrix,Lprf.ShatArray,I);
-        if (Lprf.Shat != LSSSRecon(invmatrix,Lprf.ShatArray,I)) {
-            LSSSVerifyResult.push(false);
-            return false;
-        }
-        //Alice and Watchers
-        if (Lprf.Shat != LSSSRecon(invmatrix1,Lprf.ShatArray,I1)) {
-            LSSSVerifyResult.push(false);
-            return false;
-        }
-        LSSSVerifyResult.push(true);
-        // delete proof
-        delete Lprf.Cp;
-        delete Lprf.ShatArray;
-        return true;
-    }
-    function GetLSSSVerifyResult() public view returns (bool[] memory) {
-        return LSSSVerifyResult;
-    }
-    // LSSSRecon
-    // change matrix to invRecMatrix
-    function LSSSRecon(uint256[][] memory invRecMatrix, uint256[] memory shares, uint256[] memory I) public view returns (uint256) {
-        uint256 rows = I.length;
-        // uint256[][] memory recMatrix = new uint256[][](rows);
-        // for (uint256 i = 0; i < rows; i++) {
-        //     recMatrix[i] = new uint256[](rows);
-        //     for (uint256 j = 0; j < rows; j++) {
-        //         recMatrix[i][j] = matrix[I[i]][j];
-        //     }
-        // }
-        // uint256[][] memory invRecMatrix = GaussJordanInverse(recMatrix);
-        uint256[][] memory one = new uint256[][](1);
-        one[0] = new uint256[](rows);
-        one[0][0] = 1;
-        for (uint256 i = 1; i < rows; i++) {
-            one[0][i] = 0;
-        }
-        uint256[][] memory w = MultiplyMatrix(one, invRecMatrix);
-        uint256[][] memory shares2 = new uint256[][](rows);
-        for(uint256 i = 0; i < rows; i++) {
-            shares2[i] = new uint256[](1);
-            shares2[i][0] = shares[I[i]];
-        }
+    // bool[] LSSSVerifyResult;
+    // // Prf Lprf;
+    // // uint256[][] public Matrix;
+    // function LSSSPVGSSVerify(G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray,G1Point[] memory C,G1Point[] memory PK, uint256[][] memory invmatrix, uint256[][] memory invmatrix1 ,uint256[] memory I, uint256[] memory I1) public payable returns (bool) {
+    //     Prf memory Lprf ;
+    //     Lprf.Cp = new G1Point[](shatArray.length);
+    //     Lprf.ShatArray = new uint256[](shatArray.length);
+    //     for (uint i = 0; i < shatArray.length;i++){
+    //         Lprf.Cp[i] = cp[i];
+    //         Lprf.ShatArray[i] = shatArray[i];
+    //     }
+    //     Lprf.Xc = xc;
+    //     Lprf.Shat = shat;
+    //     for(uint i = 0; i < Lprf.ShatArray.length;i++) {
+    //         G1Point memory left = Lprf.Cp[i];
+    //         G1Point memory right = g1add(g1mul(C[i],Lprf.Xc),g1mul(PK[i],Lprf.ShatArray[i]));
+    //         if (!equals(left,right)) {
+    //             LSSSVerifyResult.push(false);
+    //             return false;
+    //         }
+    //     }
+    //     uint256 recovershat = LSSSRecon(invmatrix,Lprf.ShatArray,I);
+    //     if (Lprf.Shat != recovershat) {
+    //         LSSSVerifyResult.push(false);
+    //         return false;
+    //     }
+    //     uint256 recovershat1 = LSSSRecon(invmatrix1,Lprf.ShatArray,I1);
+    //     if (Lprf.Shat != recovershat1) {
+    //         LSSSVerifyResult.push(false);
+    //         return false;
+    //     }
+    //     LSSSVerifyResult.push(true);
+    //     return true;
+    // }
+    // function GetLSSSVerifyResult() public view returns (bool[] memory) {
+    //     return LSSSVerifyResult;
+    // }
+    // // LSSSRecon
+    // // change matrix to invRecMatrix
+    // function LSSSRecon(uint256[][] memory invRecMatrix, uint256[] memory shares, uint256[] memory I) public view returns (uint256) {
+    //     uint256 rows = I.length;
+    //     // uint256[][] memory recMatrix = new uint256[][](rows);
+    //     // for (uint256 i = 0; i < rows; i++) {
+    //     //     recMatrix[i] = new uint256[](rows);
+    //     //     for (uint256 j = 0; j < rows; j++) {
+    //     //         recMatrix[i][j] = matrix[I[i]][j];
+    //     //     }
+    //     // }
+    //     // uint256[][] memory invRecMatrix = GaussJordanInverse(recMatrix);
+    //     uint256[][] memory one = new uint256[][](1);
+    //     one[0] = new uint256[](rows);
+    //     one[0][0] = 1;
+    //     for (uint256 i = 1; i < rows; i++) {
+    //         one[0][i] = 0;
+    //     }
+    //     uint256[][] memory w = MultiplyMatrix(one, invRecMatrix);
+    //     uint256[][] memory shares2 = new uint256[][](rows);
+    //     for(uint256 i = 0; i < rows; i++) {
+    //         shares2[i] = new uint256[](1);
+    //         shares2[i][0] = shares[I[i]];
+    //     }
         
-        uint256[][] memory reconS = MultiplyMatrix(w, shares2);
-        return reconS[0][0];
-    }
-    function MultiplyMatrix(uint256[][] memory A, uint256[][] memory B) internal pure returns (uint256[][] memory) {
-        uint256 n = A.length;
-        uint256 m = A[0].length;
-        uint256 p = B[0].length;
-        require(B.length == m,"The number of columns of matrix A does not match the number of rows of matrix B.");
-        uint256[][] memory C = new uint256[][](n);
-        for (uint256 i = 0; i < n; i++) {
-            C[i] = new uint256[](p);
-        }
-        for (uint256 i = 0; i < n; i++) {
-            for (uint256 j = 0; j < p; j++) {
-                uint256 sum = 0;
-                for(uint256 k = 0; k < m; k++) {
-                    sum = addmod(sum, mulmod(A[i][k], B[k][j], GEN_ORDER), GEN_ORDER);
-                }
-                C[i][j] = sum;
-            }
-        }
-        return C;
-    }
-    function GaussJordanInverse(uint256[][] memory A) internal view returns (uint256[][] memory) {
-        uint256 n = A.length;
-        // creat [A | I]
-        uint256[][] memory augmented = new uint256[][](n);
-        for(uint256 i = 0; i < n; i++) {
-            augmented[i] = new uint256[](2*n);
-            for (uint256 j = 0; j < n; j++) {
-                augmented[i][j] = A[i][j];
-            }
-            augmented[i][i+n] = 1;
-        }
-        for (uint256 i = 0; i < n; i++) {
-            if (augmented[i][i] == 0) {
-                bool found = false;
-                for (uint256 j = i + 1; j < n; j++) {
-                    if(augmented[j][i] != 0) {
-                        for (uint256 k = 0; k < 2 * n; k++) {
-                            uint256 temp = augmented[i][k];
-                            augmented[i][k] = augmented[j][k];
-                            augmented[j][k] = temp;
-                        }
-                        found = true;
-                        break;
-                    }
-                }
-                require(found, "Matrix is singular and cannot be inverted");
-            }
-            uint256 invPivot = _modInv(augmented[i][i], GEN_ORDER);
-            for(uint256 j = 0; j < 2 * n; j++) {
-                augmented[i][j] = mulmod(augmented[i][j], invPivot, GEN_ORDER);
-            }
-            for (uint256 j = 0; j < n; j++) {
-                if (j != i) {
-                    uint256 factor = augmented[j][i];
-                    for (uint256 k = 0; k < 2 * n; k++) {
-                        augmented[j][k] = submod2(augmented[j][k], mulmod(factor, augmented[i][k], GEN_ORDER), GEN_ORDER);
-                    }
-                }
-            }
-        }
-        uint256[][] memory inverse = new uint256[][](n);
-        for (uint256 i = 0; i < n; i++) {
-            inverse[i] = new uint256[](n);
-            for(uint256 j = 0; j < n; j++) {
-                inverse[i][j] = augmented[i][j+n];
-            }
-        }
-        return inverse;
-    }
-    function LUploadProof(G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray) public payable {
-        // delete proof
-        delete Lprf.Cp;
-        delete Lprf.ShatArray;
-        for (uint i = 0; i < shatArray.length;i++){
-            Lprf.Cp.push(cp[i]);
-            Lprf.ShatArray.push(shatArray[i]);
-        }
-        Lprf.Xc = xc;
-        Lprf.Shat = shat;
-    }
+    //     uint256[][] memory reconS = MultiplyMatrix(w, shares2);
+    //     return reconS[0][0];
+    // }
+    // function MultiplyMatrix(uint256[][] memory A, uint256[][] memory B) internal pure returns (uint256[][] memory) {
+    //     uint256 n = A.length;
+    //     uint256 m = A[0].length;
+    //     uint256 p = B[0].length;
+    //     require(B.length == m,"The number of columns of matrix A does not match the number of rows of matrix B.");
+    //     uint256[][] memory C = new uint256[][](n);
+    //     for (uint256 i = 0; i < n; i++) {
+    //         C[i] = new uint256[](p);
+    //     }
+    //     for (uint256 i = 0; i < n; i++) {
+    //         for (uint256 j = 0; j < p; j++) {
+    //             uint256 sum = 0;
+    //             for(uint256 k = 0; k < m; k++) {
+    //                 sum = addmod(sum, mulmod(A[i][k], B[k][j], GEN_ORDER), GEN_ORDER);
+    //             }
+    //             C[i][j] = sum;
+    //         }
+    //     }
+    //     return C;
+    // }
+    // function GaussJordanInverse(uint256[][] memory A) internal view returns (uint256[][] memory) {
+    //     uint256 n = A.length;
+    //     // creat [A | I]
+    //     uint256[][] memory augmented = new uint256[][](n);
+    //     for(uint256 i = 0; i < n; i++) {
+    //         augmented[i] = new uint256[](2*n);
+    //         for (uint256 j = 0; j < n; j++) {
+    //             augmented[i][j] = A[i][j];
+    //         }
+    //         augmented[i][i+n] = 1;
+    //     }
+    //     for (uint256 i = 0; i < n; i++) {
+    //         if (augmented[i][i] == 0) {
+    //             bool found = false;
+    //             for (uint256 j = i + 1; j < n; j++) {
+    //                 if(augmented[j][i] != 0) {
+    //                     for (uint256 k = 0; k < 2 * n; k++) {
+    //                         uint256 temp = augmented[i][k];
+    //                         augmented[i][k] = augmented[j][k];
+    //                         augmented[j][k] = temp;
+    //                     }
+    //                     found = true;
+    //                     break;
+    //                 }
+    //             }
+    //             require(found, "Matrix is singular and cannot be inverted");
+    //         }
+    //         uint256 invPivot = _modInv(augmented[i][i], GEN_ORDER);
+    //         for(uint256 j = 0; j < 2 * n; j++) {
+    //             augmented[i][j] = mulmod(augmented[i][j], invPivot, GEN_ORDER);
+    //         }
+    //         for (uint256 j = 0; j < n; j++) {
+    //             if (j != i) {
+    //                 uint256 factor = augmented[j][i];
+    //                 for (uint256 k = 0; k < 2 * n; k++) {
+    //                     augmented[j][k] = submod2(augmented[j][k], mulmod(factor, augmented[i][k], GEN_ORDER), GEN_ORDER);
+    //                 }
+    //             }
+    //         }
+    //     }
+    //     uint256[][] memory inverse = new uint256[][](n);
+    //     for (uint256 i = 0; i < n; i++) {
+    //         inverse[i] = new uint256[](n);
+    //         for(uint256 j = 0; j < n; j++) {
+    //             inverse[i][j] = augmented[i][j+n];
+    //         }
+    //     }
+    //     return inverse;
+    // }
     // //========================== PVGSS-LSSS Verification End ===============================
 
     
@@ -751,7 +735,7 @@ contract Dex
     }
 
     //session swap1: shares validity check
-    function swap1(uint256 id, G1Point[] memory C, G1Point[] memory PK, uint256[] memory I) external onlyExchanger(id){
+    function swap1(uint256 id, G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray,G1Point[] memory C, G1Point[] memory PK, uint256[] memory I) external onlyExchanger(id){
         Session storage session = sessions[id];
 
         // Check session state
@@ -763,7 +747,7 @@ contract Dex
         // Check stake
         require(stakedETH[msg.sender] >= MINIMAL_EXCHANGER_STAKE, "Insufficient stake");
         // Check validity of shares PVGSSVerify()
-        require(PVGSSVerify(C, PK, I) == true, "pvgss verify failed");
+        require(PVGSSVerify(cp, xc, shat, shatArray, C, PK, I) == true, "pvgss verify failed");
 
         // Store C_i
         if (msg.sender == session.exchangers[0]) {
@@ -816,44 +800,44 @@ contract Dex
         emit SessionStateUpdated(id, session.state);
     }
 
-    function lswap1(uint256 id, G1Point[] memory C, G1Point[] memory PK, uint256[][] memory invmatrix, uint256[][] memory invmatrix1 ,uint256[] memory I, uint256[] memory I1) external onlyExchanger(id){
-        Session storage session = sessions[id];
+    // function lswap1(uint256 id, G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray, G1Point[] memory C, G1Point[] memory PK, uint256[][] memory invmatrix, uint256[][] memory invmatrix1 ,uint256[] memory I, uint256[] memory I1) external onlyExchanger(id){
+    //     Session storage session = sessions[id];
 
-        // Check session state
-        require(session.state == SessionState.Active || session.state == SessionState.halfSwap1, "Session state is invalid for swap1");
+    //     // Check session state
+    //     require(session.state == SessionState.Active || session.state == SessionState.halfSwap1, "Session state is invalid for swap1");
 
-        // Check Expiration1
-        require(block.timestamp <= session.expiration1, "Session is expired t1");
+    //     // Check Expiration1
+    //     require(block.timestamp <= session.expiration1, "Session is expired t1");
 
-        // Check stake
-        require(stakedETH[msg.sender] >= MINIMAL_EXCHANGER_STAKE, "Insufficient stake");
-        // Check validity of shares PVGSSVerify()
-        require(LSSSPVGSSVerify(C, PK, invmatrix, invmatrix1, I, I1) == true, "pvgss verify failed");
+    //     // Check stake
+    //     require(stakedETH[msg.sender] >= MINIMAL_EXCHANGER_STAKE, "Insufficient stake");
+    //     // Check validity of shares PVGSSVerify()
+    //     require(LSSSPVGSSVerify(cp, xc, shat, shatArray, C, PK, invmatrix, invmatrix1, I, I1) == true, "pvgss verify failed");
 
-        // Store C_i
-        if (msg.sender == session.exchangers[0]) {
-            for (uint i = 0; i < PK.length; i++) {
-                address user = pubkeyhashToAddress[g1PointToBytes32(PK[i])];
-                session.Cshares1[user] = C[i];
-            }
-            session.seller_flag[0] = true;
-        } else {
-            for (uint i = 0; i < PK.length; i++) {
-                address user = pubkeyhashToAddress[g1PointToBytes32(PK[i])];
-                session.Cshares2[user] = C[i];
-            }
-            session.buyer_flag[0] = true;
-        }
+    //     // Store C_i
+    //     if (msg.sender == session.exchangers[0]) {
+    //         for (uint i = 0; i < PK.length; i++) {
+    //             address user = pubkeyhashToAddress[g1PointToBytes32(PK[i])];
+    //             session.Cshares1[user] = C[i];
+    //         }
+    //         session.seller_flag[0] = true;
+    //     } else {
+    //         for (uint i = 0; i < PK.length; i++) {
+    //             address user = pubkeyhashToAddress[g1PointToBytes32(PK[i])];
+    //             session.Cshares2[user] = C[i];
+    //         }
+    //         session.buyer_flag[0] = true;
+    //     }
     
-        if (session.state == SessionState.Active) {
-            session.state = SessionState.halfSwap1;
-        } else if (session.state == SessionState.halfSwap1) {
-            session.state = SessionState.finishSwap1;
-        }
+    //     if (session.state == SessionState.Active) {
+    //         session.state = SessionState.halfSwap1;
+    //     } else if (session.state == SessionState.halfSwap1) {
+    //         session.state = SessionState.finishSwap1;
+    //     }
 
-        // Update session state based on current state
-        emit SessionStateUpdated(id, session.state);
-    }
+    //     // Update session state based on current state
+    //     emit SessionStateUpdated(id, session.state);
+    // }
 
     //complaint
     function complain(uint256 id) external {

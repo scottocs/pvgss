@@ -336,6 +336,8 @@ func DepolyAndRegister() (common.Address, common.Address, common.Address, error)
 		GetENV("PRIVATE_KEY_8"),
 		GetENV("PRIVATE_KEY_9"),
 		GetENV("PRIVATE_KEY_10"),
+		GetENV("PRIVATE_KEY_11"),
+		GetENV("PRIVATE_KEY_12"),
 	}
 
 	client, err := ethclient.Dial("ws://127.0.0.1:8545")
@@ -352,7 +354,7 @@ func DepolyAndRegister() (common.Address, common.Address, common.Address, error)
 	deployTX = Transact(client, privateKeys[1], big.NewInt(0))
 	pvusdt_contract_address, _ := Deploy(client, "PVUSDT", deployTX)
 
-	accountNum := 10
+	accountNum := 12
 	_, allPK1, allPK2, err := LoadAccountsFromEnv(accountNum)
 	if err != nil {
 		log.Fatalf("Failed to load accounts: %v", err)
@@ -362,7 +364,7 @@ func DepolyAndRegister() (common.Address, common.Address, common.Address, error)
 	pvethInstance, _ := PVETH.NewPVETH(pveth_contract_address, client)
 	pvusdtInstance, _ := PVUSDT.NewPVUSDT(pvusdt_contract_address, client)
 
-	//register account1 to account10
+	//register account
 	for i, privateKey := range privateKeys {
 		auth := Transact(client, privateKey, big.NewInt(0))
 		tx, _ := dexInstance.Register(auth, G1ToPoint(allPK1[i]), G2ToPoint(allPK2[i]))
@@ -370,7 +372,7 @@ func DepolyAndRegister() (common.Address, common.Address, common.Address, error)
 		fmt.Println("On-chain Register Gas cost = ", receipt.GasUsed)
 	}
 
-	//stake 2 eth  account1 to account10 (account 3-10 as watcher)
+	//stake 2 eth  account1 to account12 (account 3-12 as watcher)
 	for i, privateKey := range privateKeys {
 		auth := Transact(client, privateKey, big.NewInt(9000000000000000000))
 		if i > 1 {
