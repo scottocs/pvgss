@@ -18,9 +18,10 @@ contract Dex
     // n = n(u) = 36u^4 + 36u^3 + 18u^2 + 6u + 1
     uint256 constant GEN_ORDER = 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001;
 
-    uint256 constant CURVE_B = 3;
     // a = (p+1) / 4
     uint256 constant CURVE_A = 0xc19139cb84c680a6e14116da060561765e05aa45a1c72a34f082305b61f3f52;
+    uint256 constant CURVE_B = 3;
+
 	struct G1Point {
 		uint X;
 		uint Y;
@@ -132,6 +133,7 @@ contract Dex
             mstore(add(freemem,0x80), sub(n, 2))
             mstore(add(freemem,0xA0), n)
             success := staticcall(sub(gas(), 2000), 5, freemem, 0xC0, freemem, 0x20)
+			//success := staticcall(sub(gas(), 2000), 6, input, 0xc0, r, 0x60)
             result := mload(freemem)
         }
         require(success);
@@ -152,6 +154,9 @@ contract Dex
     function g1PointToBytes32(G1Point memory point) internal pure returns (bytes32) {
         return keccak256(abi.encode(point.X, point.Y));
     }
+
+    // ========================== PVGSS-SSS Verification ===============================
+
     struct Node {
         bool IsLeaf;
         uint256[] Children; // Child nodes ID
@@ -194,21 +199,31 @@ contract Dex
         // add child nodes for X
         addChild(3, XChildId);
         // add child nodes for root
-        rootChildId = new uint256[](2);
+
         if (flag == 1) { //A and B
+            rootChildId = new uint256[](2);
             rootChildId[0] = 1;
             rootChildId[1] = 2;
             addChild(0, rootChildId);
         } 
         else if (flag == 2) { // A and Watchers
+            rootChildId = new uint256[](2);
             rootChildId[0] = 1;
             rootChildId[1] = 3;
             addChild(0, rootChildId);
         }
         else if (flag == 3) {
+            rootChildId = new uint256[](2);
             rootChildId[0] = 2;
             rootChildId[1] = 3;
             addChild(0, rootChildId);
+        }
+        else if (flag == 4) { // A and B and Watchers
+            rootChildId = new uint256[](3);
+            rootChildId[0] = 1;
+            rootChildId[1] = 2;
+            rootChildId[2] = 3;
+            addChild(0,rootChildId);
         }
     }
     // Create a node
@@ -304,9 +319,11 @@ contract Dex
         }
         require(childShares.length >= AA.T,"Insuficient shares for reconstruction");
 
+        // recSecret = SSSRecon(childShares, childIdx);
         return (SSSRecon(childShares, childIdx),AA.Idx);
     }
 
+    // ===== PVGSS-SSS Verification =====
     function PVGSSVerify(G1Point[] memory C,G1Point[] memory PK, uint256[] memory I) public payable returns (bool) {
         uint256 nodeId = 0;
         uint256 startIdx = 0;
@@ -323,23 +340,27 @@ contract Dex
                 VerifyResult.push(false);
                 return false;
             }
-            (uint256 recovershat, uint256 idx) = GSSRecon(nodeId,Q,startIdx);
-            if (prf.Shat != recovershat) {
-                VerifyResult.push(false);
-                return false;
-            }
-            VerifyResult.push(true);
-
-            // delete proof
-            delete prf.Cp;
-            delete prf.ShatArray;
         }
+        (uint256 recovershat, uint256 idx) = GSSRecon(nodeId,Q,startIdx);
+        if (prf.Shat != recovershat) {
+            VerifyResult.push(false);
+            return false;
+        }
+        VerifyResult.push(true);
+
+        // delete proof
+        delete prf.Cp;
+        delete prf.ShatArray;
         return true;
+    }
+
+    function GetVerifyResult() public view returns (bool []memory) {
+        return VerifyResult;
     }
 
     // Upload Prfs
     function UploadProof(G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray) public payable {
-        // delete prev proof
+        // delete proof
         delete prf.Cp;
         delete prf.ShatArray;
         for (uint i = 0; i < shatArray.length;i++){
@@ -355,8 +376,16 @@ contract Dex
         KeyVerifyResult.push(isKeyValid);
         return isKeyValid;
     }
-    
-    // store ERC20 token balance: balances[user addr][token addr]
+
+    function GetKeyVrfResult() public view returns (bool []memory) {
+        return KeyVerifyResult;
+    }
+
+    // ========================== PVGSS-SSS Verification End ===============================
+
+    // ========================== DEX ===============================
+
+    // store contract balance   users A token B balance: balances[userA addr][tokenB addr]
     mapping(address => mapping(address => uint256)) public balances;
 
     // store freeze_balance   
@@ -390,6 +419,7 @@ contract Dex
     mapping(uint256 => Order) public orders;
     uint256 public nextOrderId;
 
+
     // State variable to track session state
     // Active: session created  halfSwap1:one execute swap1  finishSwap1: two execute swap1 halfSwap2: one execute swap2
     enum SessionState { Active, halfSwap1, finishSwap1, halfSwap2, Complain, Success, Failure }
@@ -421,6 +451,7 @@ contract Dex
     event Penalized(address indexed exchanger, uint256 amount);
     event SessionCreated(uint256 indexed orderId, address seller, address buyer, address[] watchers, uint256 expiration1, uint256 expiration2);
 
+
     modifier onlyExchanger(uint256 id) {
         require(msg.sender == sessions[id].exchangers[0] || msg.sender == sessions[id].exchangers[1], "Invalid exchanger");
         _;
@@ -451,7 +482,7 @@ contract Dex
         emit TokensReceived(token, msg.sender, amount);
     }
 
-    // Withdraw ERC20 tokens from the contract
+    // Withdraw tokens from the contract
     function withdraw(address token, uint256 amount) external {
         require(balances[msg.sender][token] >= amount, "Insufficient balance");
 
@@ -467,6 +498,7 @@ contract Dex
         if (asWatcher) {
             watcherList.push(msg.sender);
         }
+
         stakedETH[msg.sender] += msg.value;
     }
 
@@ -508,8 +540,10 @@ contract Dex
     // Cancel an order
     function cancelOrder(uint256 orderId) external {
         Order storage order = orders[orderId];
+
         // Check if the order exists and is active
         require(order.isActive, "Order is not active or does not exist");
+
         // Check if the caller is the seller
         require(msg.sender == order.seller, "Only the seller can cancel the order");
 
@@ -540,8 +574,8 @@ contract Dex
         newSession.state = SessionState.Active; // Initial state
         newSession.exchangers.push(_order.seller); // Add seller (Alice)
         newSession.exchangers.push(msg.sender); // Add buyer (Bob)
-        newSession.expiration1 = block.timestamp + 1 minutes ; // Set expiration1
-        newSession.expiration2 = block.timestamp + 2 minutes; // Set expiration2
+        newSession.expiration1 = block.timestamp + 30 seconds ; // Set expiration1
+        newSession.expiration2 = block.timestamp + 1 minutes; // Set expiration2
         
         //add watchers
         //uint256 randomIndex = uint256(keccak256(abi.encodePacked(block.timestamp, orderId)));
@@ -558,10 +592,13 @@ contract Dex
     //session swap1: shares validity check
     function swap1(uint256 id, G1Point[] memory C, G1Point[] memory PK, uint256[] memory I) external onlyExchanger(id){
         Session storage session = sessions[id];
+
         // Check session state
         require(session.state == SessionState.Active || session.state == SessionState.halfSwap1, "Session state is invalid for swap1");
+
         // Check Expiration1
         require(block.timestamp <= session.expiration1, "Session is expired t1");
+
         // Check stake
         require(stakedETH[msg.sender] >= MINIMAL_EXCHANGER_STAKE, "Insufficient stake");
         // Check validity of shares PVGSSVerify()
@@ -596,9 +633,11 @@ contract Dex
         Session storage session = sessions[id];
         // Check session state
         require(session.state == SessionState.finishSwap1 || session.state == SessionState.halfSwap2, "Session state is invalid for swap2");
+
         // Check stake
         require(stakedETH[msg.sender] >= MINIMAL_EXCHANGER_STAKE, "Insufficient stake");
-        // Check PVGSSKeyVrf and store decShare
+
+        // Invoke PVGSSKeyVrf and store decShare
         require (PVGSSKeyVrf(session.Cshares1[msg.sender], decShare, pubkey2[msg.sender], G2) == true, "KeyVrf failed");
 
         session.shares[msg.sender] = decShare;
@@ -616,17 +655,20 @@ contract Dex
         emit SessionStateUpdated(id, session.state);
     }
 
-    //complain
+    //complaint
     function complain(uint256 id) external {
         Session storage session = sessions[id];
+
         require(block.timestamp > session.expiration1, "Complaint period has not started");
         require(block.timestamp <= session.expiration2, "Session is out of t2");
         require(session.state == SessionState.halfSwap2, "Session state is not valid");
 
         // Check msg.sender is Alice or Bob
         require(msg.sender == session.exchangers[0] || msg.sender == session.exchangers[1], "Complainer is not valid");
+
         // Check stake
         require(stakedETH[msg.sender] >= MINIMAL_EXCHANGER_STAKE, "Insufficient stake");
+
         // Update state to Complain
         session.state = SessionState.Complain;
 
@@ -680,11 +722,12 @@ contract Dex
         require(block.timestamp > session.expiration2, "Session has not expired t2");
 
         // Determine the final state based on conditions
+
         if (session.state == SessionState.Success) {
             // Both exchangers have completed swap2
             incentivizeAllWatchers(session);
         } else if (session.state == SessionState.Complain) {
-            if (getSubmittedWatchersCount(session) > 1) { //set threshold=2 now
+            if (getSubmittedWatchersCount(session) > 0) { //set threshold=1 now
                 //dispute resolved  
                 session.state = SessionState.Success;
             } else {
@@ -785,5 +828,6 @@ contract Dex
                 emit Penalized(buyer, 0.1 ether);
             }
         }
+
     }
 }
