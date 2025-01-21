@@ -28,12 +28,12 @@ import (
 // deploy contract and obtain abi interface and bin of source code
 func Deploy(client *ethclient.Client, contract_name string, auth *bind.TransactOpts) (common.Address, *types.Transaction) {
 
-	abiBytes, err := os.ReadFile("../compile/contract/" + contract_name + "/" + contract_name + ".abi")
+	abiBytes, err := os.ReadFile("compile/contract/" + contract_name + "/" + contract_name + ".abi")
 	if err != nil {
 		log.Fatalf("Failed to read ABI file: %v", err)
 	}
 
-	bin, err := os.ReadFile("../compile/contract/" + contract_name + "/" + contract_name + ".bin")
+	bin, err := os.ReadFile("compile/contract/" + contract_name + "/" + contract_name + ".bin")
 	if err != nil {
 		log.Fatalf("Failed to read BIN file: %v", err)
 	}
@@ -66,7 +66,7 @@ func Transact(client *ethclient.Client, privatekey string, value *big.Int) *bind
 	auth, _ := bind.NewKeyedTransactorWithChainID(key, chainID)
 	auth.Nonce = big.NewInt(int64(nonce))
 	auth.Value = value
-	auth.GasLimit = uint64(900719925)       //gasLimit
+	auth.GasLimit = uint64(10000000)        //gasLimit
 	auth.GasPrice = big.NewInt(20000000000) //gasPrice
 	return auth
 }

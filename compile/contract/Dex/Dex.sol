@@ -19,10 +19,8 @@ contract Dex
     uint256 constant GEN_ORDER = 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001;
 
     uint256 constant CURVE_B = 3;
-
     // a = (p+1) / 4
     uint256 constant CURVE_A = 0xc19139cb84c680a6e14116da060561765e05aa45a1c72a34f082305b61f3f52;
-
 	struct G1Point {
 		uint X;
 		uint Y;
@@ -34,6 +32,7 @@ contract Dex
 		uint[2] Y;
 	}
 
+    //Generator
     G1Point G1 = G1Point(1, 2);
     G2Point G2 = G2Point(
         [11559732032986387107991004021392285783925812861821192530917403151452391805634,
@@ -52,8 +51,6 @@ contract Dex
 		bool success;
 		assembly {
 			success := staticcall(sub(gas(), 2000), 6, input, 0xc0, r, 0x60)
-			// Use "invalid" to make gas estimation work
-			//switch success case 0 { invalid }
 		}
 		require(success);
 	}
@@ -68,8 +65,6 @@ contract Dex
 		bool success;
 		assembly {
 			success := staticcall(sub(gas(), 2000), 7, input, 0x80, r, 0x60)
-			// Use "invalid" to make gas estimation work
-			//switch success case 0 { invalid }
 		}
 		require (success);
 	}
@@ -96,8 +91,6 @@ contract Dex
 		bool success;
 		assembly {
 			success := staticcall(sub(gas()	, 2000), 8, add(input, 0x20), mul(inputSize, 0x20), out, 0x20)
-			// Use "invalid" to make gas estimation work
-			//switch success case 0 { invalid }
 		}
 		require(success);
 		return out[0] != 0;
@@ -139,7 +132,6 @@ contract Dex
             mstore(add(freemem,0x80), sub(n, 2))
             mstore(add(freemem,0xA0), n)
             success := staticcall(sub(gas(), 2000), 5, freemem, 0xC0, freemem, 0x20)
-			//success := staticcall(sub(gas(), 2000), 6, input, 0xc0, r, 0x60)
             result := mload(freemem)
         }
         require(success);
@@ -157,8 +149,9 @@ contract Dex
         return G1Point(p.X, FIELD_MODULUS - (p.Y % FIELD_MODULUS));
     }
 
-    // ========================== PVGSS-SSS Verification ===============================
-
+    function g1PointToBytes32(G1Point memory point) internal pure returns (bytes32) {
+        return keccak256(abi.encode(point.X, point.Y));
+    }
     struct Node {
         bool IsLeaf;
         uint256[] Children; // Child nodes ID
@@ -240,15 +233,6 @@ contract Dex
         }
     }
 
-    // function getChildren(uint256 nodeId) public view returns (uint256[] memory) {
-    //     return nodes[nodeId].Children;
-    // }
-
-    // function getNodeData(uint256 nodeId) public view returns (bool, uint256, uint256, uint256) {
-    //     Node storage node = nodes[nodeId];
-    //     return (node.IsLeaf,node.Childrennum,node.T,node.Idx);
-    // }
-
     // ===== SSS and GSS =====
     function evaluatePolynomial(uint256 x,uint256[] memory coefficients) internal returns (uint256) {
         uint256 result = coefficients[0]; 
@@ -302,14 +286,7 @@ contract Dex
         // get current node
         Node storage AA = nodes[nodeId];
 
-        // require(startIdx < Q.length,"Start index out of bounds");
-
         if(AA.IsLeaf) {
-            // if(Q.length == 0) {
-            //     // recSecret = 0;
-            //     return (0,0);
-            // }
-            // recSecret = Q[startIdx];
             return (Q[startIdx],AA.Idx);
         }
         // child nodes
@@ -327,11 +304,9 @@ contract Dex
         }
         require(childShares.length >= AA.T,"Insuficient shares for reconstruction");
 
-        // recSecret = SSSRecon(childShares, childIdx);
         return (SSSRecon(childShares, childIdx),AA.Idx);
     }
 
-    // ===== PVGSS-SSS Verification =====
     function PVGSSVerify(G1Point[] memory C,G1Point[] memory PK, uint256[] memory I) public payable returns (bool) {
         uint256 nodeId = 0;
         uint256 startIdx = 0;
@@ -362,13 +337,9 @@ contract Dex
         return true;
     }
 
-    function GetVerifyResult() public view returns (bool []memory) {
-        return VerifyResult;
-    }
-
     // Upload Prfs
     function UploadProof(G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray) public payable {
-        // delete proof
+        // delete prev proof
         delete prf.Cp;
         delete prf.ShatArray;
         for (uint i = 0; i < shatArray.length;i++){
@@ -384,152 +355,8 @@ contract Dex
         KeyVerifyResult.push(isKeyValid);
         return isKeyValid;
     }
-
-    function GetKeyVrfResult() public view returns (bool []memory) {
-        return KeyVerifyResult;
-    }
-
-    // ========================== PVGSS-SSS Verification End ===============================
-
-    // // // ========================== PVGSS-LSSS Verification ===============================
-
-    // bool[] LSSSVerifyResult;
-    // Prf Lprf;
-    // // uint256[][] public Matrix;
-    // function LSSSPVGSSVerify(G1Point[] memory C,G1Point[] memory PK, uint256[][] memory matrix ,uint256[] memory I) public payable returns (bool) {
-    //     for(uint i = 0; i < Lprf.ShatArray.length;i++) {
-    //         G1Point memory left = Lprf.Cp[i];
-    //         G1Point memory right = g1add(g1mul(C[i],Lprf.Xc),g1mul(PK[i],Lprf.ShatArray[i]));
-    //         if (!equals(left,right)) {
-    //             LSSSVerifyResult.push(false);
-    //             return false;
-    //         }
-    //         uint256 recovershat = LSSSRecon(matrix,Lprf.ShatArray,I);
-    //         if (Lprf.Shat != recovershat) {
-    //             LSSSVerifyResult.push(false);
-    //             return false;
-    //         }
-    //         LSSSVerifyResult.push(true);
-    //     }
-    //     // delete proof
-    //     delete Lprf.Cp;
-    //     delete Lprf.ShatArray;
-    //     return true;
-    // }
-    // function GetLSSSVerifyResult() public view returns (bool[] memory) {
-    //     return LSSSVerifyResult;
-    // }
-    // // LSSSRecon
-    // function LSSSRecon(uint256[][] memory matrix, uint256[] memory shares, uint256[] memory I) public view returns (uint256) {
-    //     uint256 rows = I.length;
-    //     uint256[][] memory recMatrix = new uint256[][](rows);
-    //     for (uint256 i = 0; i < rows; i++) {
-    //         recMatrix[i] = new uint256[](rows);
-    //         for (uint256 j = 0; j < rows; j++) {
-    //             recMatrix[i][j] = matrix[I[i]][j];
-    //         }
-    //     }
-    //     uint256[][] memory invRecMatrix = GaussJordanInverse(recMatrix);
-    //     uint256[][] memory one = new uint256[][](1);
-    //     one[0] = new uint256[](rows);
-    //     one[0][0] = 1;
-    //     for (uint256 i = 1; i < rows; i++) {
-    //         one[0][i] = 0;
-    //     }
-    //     uint256[][] memory w = MultiplyMatrix(one, invRecMatrix);
-    //     uint256[][] memory shares2 = new uint256[][](rows);
-    //     for(uint256 i = 0; i < rows; i++) {
-    //         shares2[i] = new uint256[](1);
-    //         shares2[i][0] = shares[i];
-    //     }
-        
-    //     uint256[][] memory reconS = MultiplyMatrix(w, shares2);
-    //     return reconS[0][0];
-    // }
-    // function MultiplyMatrix(uint256[][] memory A, uint256[][] memory B) internal pure returns (uint256[][] memory) {
-    //     uint256 n = A.length;
-    //     uint256 m = A[0].length;
-    //     uint256 p = B[0].length;
-    //     require(B.length == m,"The number of columns of matrix A does not match the number of rows of matrix B.");
-    //     uint256[][] memory C = new uint256[][](n);
-    //     for (uint256 i = 0; i < n; i++) {
-    //         C[i] = new uint256[](p);
-    //     }
-    //     for (uint256 i = 0; i < n; i++) {
-    //         for (uint256 j = 0; j < p; j++) {
-    //             uint256 sum = 0;
-    //             for(uint256 k = 0; k < m; k++) {
-    //                 sum = addmod(sum, mulmod(A[i][k], B[k][j], GEN_ORDER), GEN_ORDER);
-    //             }
-    //             C[i][j] = sum;
-    //         }
-    //     }
-    //     return C;
-    // }
-    // function GaussJordanInverse(uint256[][] memory A) internal view returns (uint256[][] memory) {
-    //     uint256 n = A.length;
-    //     // creat [A | I]
-    //     uint256[][] memory augmented = new uint256[][](n);
-    //     for(uint256 i = 0; i < n; i++) {
-    //         augmented[i] = new uint256[](2*n);
-    //         for (uint256 j = 0; j < n; j++) {
-    //             augmented[i][j] = A[i][j];
-    //         }
-    //         augmented[i][i+n] = 1;
-    //     }
-    //     for (uint256 i = 0; i < n; i++) {
-    //         if (augmented[i][i] == 0) {
-    //             bool found = false;
-    //             for (uint256 j = i + 1; j < n; j++) {
-    //                 if(augmented[j][i] != 0) {
-    //                     for (uint256 k = 0; k < 2 * n; k++) {
-    //                         uint256 temp = augmented[i][k];
-    //                         augmented[i][k] = augmented[j][k];
-    //                         augmented[j][k] = temp;
-    //                     }
-    //                     found = true;
-    //                     break;
-    //                 }
-    //             }
-    //             require(found, "Matrix is singular and cannot be inverted");
-    //         }
-    //         uint256 invPivot = _modInv(augmented[i][i], GEN_ORDER);
-    //         for(uint256 j = 0; j < 2 * n; j++) {
-    //             augmented[i][j] = mulmod(augmented[i][j], invPivot, GEN_ORDER);
-    //         }
-    //         for (uint256 j = 0; j < n; j++) {
-    //             if (j != i) {
-    //                 uint256 factor = augmented[j][i];
-    //                 for (uint256 k = 0; k < 2 * n; k++) {
-    //                     augmented[j][k] = submod2(augmented[j][k], mulmod(factor, augmented[i][k], GEN_ORDER), GEN_ORDER);
-    //                 }
-    //             }
-    //         }
-    //     }
-    //     uint256[][] memory inverse = new uint256[][](n);
-    //     for (uint256 i = 0; i < n; i++) {
-    //         inverse[i] = new uint256[](n);
-    //         for(uint256 j = 0; j < n; j++) {
-    //             inverse[i][j] = augmented[i][j+n];
-    //         }
-    //     }
-    //     return inverse;
-    // }
-    // function LUploadProof(G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray) public payable {
-    //     // delete proof
-    //     delete Lprf.Cp;
-    //     delete Lprf.ShatArray;
-    //     for (uint i = 0; i < shatArray.length;i++){
-    //         Lprf.Cp.push(cp[i]);
-    //         Lprf.ShatArray.push(shatArray[i]);
-    //     }
-    //     Lprf.Xc = xc;
-    //     Lprf.Shat = shat;
-    // }
-    // //========================== PVGSS-LSSS Verification End ===============================
-
     
-    // store contract balance   users A token B balance: balances[userA addr][tokenB addr]
+    // store ERC20 token balance: balances[user addr][token addr]
     mapping(address => mapping(address => uint256)) public balances;
 
     // store freeze_balance   
@@ -563,7 +390,6 @@ contract Dex
     mapping(uint256 => Order) public orders;
     uint256 public nextOrderId;
 
-
     // State variable to track session state
     // Active: session created  halfSwap1:one execute swap1  finishSwap1: two execute swap1 halfSwap2: one execute swap2
     enum SessionState { Active, halfSwap1, finishSwap1, halfSwap2, Complain, Success, Failure }
@@ -595,7 +421,6 @@ contract Dex
     event Penalized(address indexed exchanger, uint256 amount);
     event SessionCreated(uint256 indexed orderId, address seller, address buyer, address[] watchers, uint256 expiration1, uint256 expiration2);
 
-
     modifier onlyExchanger(uint256 id) {
         require(msg.sender == sessions[id].exchangers[0] || msg.sender == sessions[id].exchangers[1], "Invalid exchanger");
         _;
@@ -626,7 +451,7 @@ contract Dex
         emit TokensReceived(token, msg.sender, amount);
     }
 
-    // Withdraw tokens from the contract
+    // Withdraw ERC20 tokens from the contract
     function withdraw(address token, uint256 amount) external {
         require(balances[msg.sender][token] >= amount, "Insufficient balance");
 
@@ -642,7 +467,6 @@ contract Dex
         if (asWatcher) {
             watcherList.push(msg.sender);
         }
-
         stakedETH[msg.sender] += msg.value;
     }
 
@@ -681,23 +505,21 @@ contract Dex
         return currentOrderId;
     }
 
-    // // Cancel an order
-    // function cancelOrder(uint256 orderId) external {
-    //     Order storage order = orders[orderId];
+    // Cancel an order
+    function cancelOrder(uint256 orderId) external {
+        Order storage order = orders[orderId];
+        // Check if the order exists and is active
+        require(order.isActive, "Order is not active or does not exist");
+        // Check if the caller is the seller
+        require(msg.sender == order.seller, "Only the seller can cancel the order");
 
-    //     // Check if the order exists and is active
-    //     require(order.isActive, "Order is not active or does not exist");
+        // Mark the order as inactive
+        order.isActive = false;
 
-    //     // Check if the caller is the seller
-    //     require(msg.sender == order.seller, "Only the seller can cancel the order");
-
-    //     // Mark the order as inactive
-    //     order.isActive = false;
-
-    //     // Unfreeze the seller's funds
-    //     balances[msg.sender][order.tokenSell] += order.amountSell;
-    //     freeze_balances[msg.sender][orderId][order.tokenSell] -= order.amountSell;
-    // }
+        // Unfreeze the seller's funds
+        balances[msg.sender][order.tokenSell] += order.amountSell;
+        freeze_balances[msg.sender][orderId][order.tokenSell] -= order.amountSell;
+    }
 
     // Accept order
     function acceptOrder(uint256 orderId, uint256 watcherNum) external {
@@ -718,8 +540,8 @@ contract Dex
         newSession.state = SessionState.Active; // Initial state
         newSession.exchangers.push(_order.seller); // Add seller (Alice)
         newSession.exchangers.push(msg.sender); // Add buyer (Bob)
-        newSession.expiration1 = block.timestamp + 30 seconds ; // Set expiration1
-        newSession.expiration2 = block.timestamp + 1 minutes; // Set expiration2
+        newSession.expiration1 = block.timestamp + 1 minutes ; // Set expiration1
+        newSession.expiration2 = block.timestamp + 2 minutes; // Set expiration2
         
         //add watchers
         //uint256 randomIndex = uint256(keccak256(abi.encodePacked(block.timestamp, orderId)));
@@ -736,13 +558,10 @@ contract Dex
     //session swap1: shares validity check
     function swap1(uint256 id, G1Point[] memory C, G1Point[] memory PK, uint256[] memory I) external onlyExchanger(id){
         Session storage session = sessions[id];
-
         // Check session state
         require(session.state == SessionState.Active || session.state == SessionState.halfSwap1, "Session state is invalid for swap1");
-
         // Check Expiration1
         require(block.timestamp <= session.expiration1, "Session is expired t1");
-
         // Check stake
         require(stakedETH[msg.sender] >= MINIMAL_EXCHANGER_STAKE, "Insufficient stake");
         // Check validity of shares PVGSSVerify()
@@ -777,11 +596,9 @@ contract Dex
         Session storage session = sessions[id];
         // Check session state
         require(session.state == SessionState.finishSwap1 || session.state == SessionState.halfSwap2, "Session state is invalid for swap2");
-
         // Check stake
         require(stakedETH[msg.sender] >= MINIMAL_EXCHANGER_STAKE, "Insufficient stake");
-
-        // Invoke PVGSSKeyVrf and store decShare
+        // Check PVGSSKeyVrf and store decShare
         require (PVGSSKeyVrf(session.Cshares1[msg.sender], decShare, pubkey2[msg.sender], G2) == true, "KeyVrf failed");
 
         session.shares[msg.sender] = decShare;
@@ -799,59 +616,17 @@ contract Dex
         emit SessionStateUpdated(id, session.state);
     }
 
-    // function lswap1(uint256 id, G1Point[] memory C, G1Point[] memory PK, uint256[][] memory matrix ,uint256[] memory I) external onlyExchanger(id){
-    //     Session storage session = sessions[id];
-
-    //     // Check session state
-    //     require(session.state == SessionState.Active || session.state == SessionState.halfSwap1, "Session state is invalid for swap1");
-
-    //     // Check Expiration1
-    //     require(block.timestamp <= session.expiration1, "Session is expired t1");
-
-    //     // Check stake
-    //     require(stakedETH[msg.sender] >= MINIMAL_EXCHANGER_STAKE, "Insufficient stake");
-    //     // Check validity of shares PVGSSVerify()
-    //     require(LSSSPVGSSVerify(C, PK, matrix, I) == true, "pvgss verify failed");
-
-    //     // Store C_i
-    //     if (msg.sender == session.exchangers[0]) {
-    //         for (uint i = 0; i < PK.length; i++) {
-    //             address user = pubkeyhashToAddress[g1PointToBytes32(PK[i])];
-    //             session.Cshares1[user] = C[i];
-    //         }
-    //         session.seller_flag[0] = true;
-    //     } else {
-    //         for (uint i = 0; i < PK.length; i++) {
-    //             address user = pubkeyhashToAddress[g1PointToBytes32(PK[i])];
-    //             session.Cshares2[user] = C[i];
-    //         }
-    //         session.buyer_flag[0] = true;
-    //     }
-    
-    //     if (session.state == SessionState.Active) {
-    //         session.state = SessionState.halfSwap1;
-    //     } else if (session.state == SessionState.halfSwap1) {
-    //         session.state = SessionState.finishSwap1;
-    //     }
-
-    //     // Update session state based on current state
-    //     emit SessionStateUpdated(id, session.state);
-    // }
-
-    //complaint
+    //complain
     function complain(uint256 id) external {
         Session storage session = sessions[id];
-
         require(block.timestamp > session.expiration1, "Complaint period has not started");
         require(block.timestamp <= session.expiration2, "Session is out of t2");
         require(session.state == SessionState.halfSwap2, "Session state is not valid");
 
         // Check msg.sender is Alice or Bob
         require(msg.sender == session.exchangers[0] || msg.sender == session.exchangers[1], "Complainer is not valid");
-
         // Check stake
         require(stakedETH[msg.sender] >= MINIMAL_EXCHANGER_STAKE, "Insufficient stake");
-
         // Update state to Complain
         session.state = SessionState.Complain;
 
@@ -905,7 +680,6 @@ contract Dex
         require(block.timestamp > session.expiration2, "Session has not expired t2");
 
         // Determine the final state based on conditions
-
         if (session.state == SessionState.Success) {
             // Both exchangers have completed swap2
             incentivizeAllWatchers(session);
@@ -962,6 +736,7 @@ contract Dex
         emit SessionStateUpdated(orderId, session.state);
     }
 
+    //Incentivize all watchers
     function incentivizeAllWatchers(Session storage session) internal {
         for (uint i = 0; i < session.watchers.length; i++) {
             address watcher = session.watchers[i];
@@ -1010,10 +785,5 @@ contract Dex
                 emit Penalized(buyer, 0.1 ether);
             }
         }
-
-    }
-
-    function g1PointToBytes32(G1Point memory point) internal pure returns (bytes32) {
-        return keccak256(abi.encode(point.X, point.Y));
     }
 }
