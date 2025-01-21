@@ -55,7 +55,7 @@ Version: 0.8.25-develop
 
     ```bash
     cd test
-    go test -v -timeout 5m -run TestDexGasSSS
+    go test -v -timeout 30m -run TestDexGasSSS
     ```
 
 5. Run the main.go
