@@ -391,7 +391,7 @@ contract Dex
 
     function PVGSSKeyVrf(G1Point memory C, G1Point memory decShare, G2Point memory pk2,G2Point memory g2) public payable returns (bool) {
         bool isKeyValid = pairingProd2(decShare, pk2, negate(C), g2);
-        // KeyVerifyResult.push(isKeyValid);
+        KeyVerifyResult.push(isKeyValid);
         return isKeyValid;
     }
 
