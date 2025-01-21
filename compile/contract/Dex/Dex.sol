@@ -201,21 +201,31 @@ contract Dex
         // add child nodes for X
         addChild(3, XChildId);
         // add child nodes for root
-        rootChildId = new uint256[](2);
+
         if (flag == 1) { //A and B
+            rootChildId = new uint256[](2);
             rootChildId[0] = 1;
             rootChildId[1] = 2;
             addChild(0, rootChildId);
         } 
         else if (flag == 2) { // A and Watchers
+            rootChildId = new uint256[](2);
             rootChildId[0] = 1;
             rootChildId[1] = 3;
             addChild(0, rootChildId);
         }
         else if (flag == 3) {
+            rootChildId = new uint256[](2);
             rootChildId[0] = 2;
             rootChildId[1] = 3;
             addChild(0, rootChildId);
+        }
+        else if (flag == 4) { // A and B and Watchers
+            rootChildId = new uint256[](3);
+            rootChildId[0] = 1;
+            rootChildId[1] = 2;
+            rootChildId[2] = 3;
+            addChild(0,rootChildId);
         }
     }
     // Create a node
@@ -348,17 +358,17 @@ contract Dex
                 VerifyResult.push(false);
                 return false;
             }
-            (uint256 recovershat, uint256 idx) = GSSRecon(nodeId,Q,startIdx);
-            if (prf.Shat != recovershat) {
-                VerifyResult.push(false);
-                return false;
-            }
-            VerifyResult.push(true);
-
-            // delete proof
-            delete prf.Cp;
-            delete prf.ShatArray;
         }
+        (uint256 recovershat, uint256 idx) = GSSRecon(nodeId,Q,startIdx);
+        if (prf.Shat != recovershat) {
+            VerifyResult.push(false);
+            return false;
+        }
+        VerifyResult.push(true);
+
+        // delete proof
+        delete prf.Cp;
+        delete prf.ShatArray;
         return true;
     }
 
@@ -396,7 +406,7 @@ contract Dex
     // bool[] LSSSVerifyResult;
     // Prf Lprf;
     // // uint256[][] public Matrix;
-    // function LSSSPVGSSVerify(G1Point[] memory C,G1Point[] memory PK, uint256[][] memory matrix ,uint256[] memory I) public payable returns (bool) {
+    // function LSSSPVGSSVerify(G1Point[] memory C,G1Point[] memory PK, uint256[][] memory invmatrix, uint256[][] memory invmatrix1 ,uint256[] memory I, uint256[] memory I1) public payable returns (bool) {
     //     for(uint i = 0; i < Lprf.ShatArray.length;i++) {
     //         G1Point memory left = Lprf.Cp[i];
     //         G1Point memory right = g1add(g1mul(C[i],Lprf.Xc),g1mul(PK[i],Lprf.ShatArray[i]));
@@ -404,13 +414,20 @@ contract Dex
     //             LSSSVerifyResult.push(false);
     //             return false;
     //         }
-    //         uint256 recovershat = LSSSRecon(matrix,Lprf.ShatArray,I);
-    //         if (Lprf.Shat != recovershat) {
-    //             LSSSVerifyResult.push(false);
-    //             return false;
-    //         }
-    //         LSSSVerifyResult.push(true);
     //     }
+    //     // Alice and Bob
+    //     uint256 recovershat = LSSSRecon(invmatrix,Lprf.ShatArray,I);
+    //     if (Lprf.Shat != recovershat) {
+    //         LSSSVerifyResult.push(false);
+    //         return false;
+    //     }
+    //     // Alice and Watchers
+    //     uint256 recovershat = LSSSRecon(invmatrix1,Lprf.ShatArray,I1);
+    //     if (Lprf.Shat != recovershat) {
+    //         LSSSVerifyResult.push(false);
+    //         return false;
+    //     }
+    //     LSSSVerifyResult.push(true);
     //     // delete proof
     //     delete Lprf.Cp;
     //     delete Lprf.ShatArray;
@@ -420,16 +437,17 @@ contract Dex
     //     return LSSSVerifyResult;
     // }
     // // LSSSRecon
-    // function LSSSRecon(uint256[][] memory matrix, uint256[] memory shares, uint256[] memory I) public view returns (uint256) {
+    // // change matrix to invRecMatrix
+    // function LSSSRecon(uint256[][] memory invRecMatrix, uint256[] memory shares, uint256[] memory I) public view returns (uint256) {
     //     uint256 rows = I.length;
-    //     uint256[][] memory recMatrix = new uint256[][](rows);
-    //     for (uint256 i = 0; i < rows; i++) {
-    //         recMatrix[i] = new uint256[](rows);
-    //         for (uint256 j = 0; j < rows; j++) {
-    //             recMatrix[i][j] = matrix[I[i]][j];
-    //         }
-    //     }
-    //     uint256[][] memory invRecMatrix = GaussJordanInverse(recMatrix);
+    //     // uint256[][] memory recMatrix = new uint256[][](rows);
+    //     // for (uint256 i = 0; i < rows; i++) {
+    //     //     recMatrix[i] = new uint256[](rows);
+    //     //     for (uint256 j = 0; j < rows; j++) {
+    //     //         recMatrix[i][j] = matrix[I[i]][j];
+    //     //     }
+    //     // }
+    //     // uint256[][] memory invRecMatrix = GaussJordanInverse(recMatrix);
     //     uint256[][] memory one = new uint256[][](1);
     //     one[0] = new uint256[](rows);
     //     one[0][0] = 1;
@@ -910,7 +928,7 @@ contract Dex
             // Both exchangers have completed swap2
             incentivizeAllWatchers(session);
         } else if (session.state == SessionState.Complain) {
-            if (getSubmittedWatchersCount(session) > 1) { //set threshold=2 now
+            if (getSubmittedWatchersCount(session) > 0) { //set threshold=2 now
                 //dispute resolved  
                 session.state = SessionState.Success;
             } else {

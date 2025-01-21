@@ -262,7 +262,7 @@ func TestDexGasSSS(t *testing.T) {
 
 	orderId := big.NewInt(0)
 
-	for nx := 1; nx < 3; nx++ {
+	for nx := 1; nx < 9; nx++ {
 		log.Println("test for order", orderId, " with watchers", nx)
 		//account1 create order : (sell 1 PVETH to 3000 PVUSDT)  call createOrder(address tokenSell, uint256 amountSell, address tokenBuy, uint256 amountBuy)
 		auth1 := utils.Transact(client, privateKeys[0], big.NewInt(0))
@@ -287,7 +287,7 @@ func TestDexGasSSS(t *testing.T) {
 
 		// //1. PVGSSSetup
 		// nx := 2       // the number of Watchers   account 3, account 4, account 5 now
-		t := 2        // the threshold of Watchers
+		t := 1        // the threshold of Watchers
 		num := nx + 2 // the number of leaf nodes
 
 		// Of-chain: construct the access control structure
@@ -322,23 +322,28 @@ func TestDexGasSSS(t *testing.T) {
 		C, prfs, _ := pvgss_sss.PVGSSShare(secret, root, PK1)
 
 		// Of-chain: construct paths that satisfy the access control structure
-		// Case1: A and B
-		path1 := gss.NewNode(false, 2, 2, big.NewInt(int64(0)))
-		path1.Children = []*gss.Node{A, B}
+		I := make([]int, nx+2)
+		// I[0] = 0
+		for i := 0; i < nx+2; i++ {
+			I[i] = i
+		}
 
 		// On-chain: construct the access control structure
 		// On-chain: construct paths that satisfy the access control structure
+		// A and B and Watchers
 		auth1_1 := utils.Transact(client, privateKeys[0], big.NewInt(0))
-		tx1_1, _ := dexInstance.CreatePath(auth1_1, big.NewInt(int64(nx)), big.NewInt(int64(t)), big.NewInt(1))
+		tx1_1, _ := dexInstance.CreatePath(auth1_1, big.NewInt(int64(nx)), big.NewInt(int64(t)), big.NewInt(4))
 		_, _ = bind.WaitMined(context.Background(), client, tx1_1)
 
-		VrfQ := make([]*big.Int, 2)
-		VrfQ[0] = big.NewInt(0)
-		VrfQ[1] = big.NewInt(1)
+		VrfQ := make([]*big.Int, 2+t)
+		// VrfQ[0] = big.NewInt(1)
+		for i := 0; i < t+2; i++ {
+			VrfQ[i] = big.NewInt(int64(i))
+		}
 
 		// 3. PVGSSVerify
 		// Off-chain
-		isShareValid, _ := pvgss_sss.PVGSSVerify(C, prfs, root, PK1, path1)
+		isShareValid, _ := pvgss_sss.PVGSSVerify(C, prfs, root, PK1, root, I)
 
 		log.Println("Of-chain Verfication result = ", isShareValid)
 
