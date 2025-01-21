@@ -1,1 +1,9 @@
 .idea/
+compile/node_modules
+**/*.bin
+**/*.abi
+
+compile/contract/Dex/Dex.go
+compile/contract/PVETH/PVETH.go
+compile/contract/PVUSDT/PVUSDT.go
+log.txt

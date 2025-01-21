@@ -22,6 +22,8 @@ Version: 0.8.25-develop
 
 * `main.go`   run this file to test the functionalities of the framework.
 
+* `test/dex_test.go` run this file to test the dex contract and get gas usage.
+
 * `compile/contract/`  The folder stores contract source code file (.sol) and generated go contract file.
 
 * `compile/compile.sh`  The script file compiles solidity and generates go contract file.
@@ -49,7 +51,15 @@ Version: 0.8.25-develop
     bash compile.sh
     ```
 
-4. Run the main.go
+4. Test dex gas usage
+
+    ```bash
+    cd test
+    go test -v -timeout 5m -run TestDexGasSSS
+    ```
+
+5. Run the main.go
     ```bash
     go run main.go
     ```
+
