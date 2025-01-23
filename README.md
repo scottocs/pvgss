@@ -42,13 +42,13 @@ Version: 0.8.25-develop
 2. start ganache
 
     ```bash
-    ganache --mnemonic "pvgss" -l 90071992547 -e 1000
+    ganache --accounts 20 --mnemonic "pvgss" -l 90071992547 -e 100
     ```
 
 3. Compile the smart contract code
 
     ```bash
-    bash compile.sh
+    npm install && bash compile.sh
     ```
 
 4. Test dex gas usage
