@@ -73,13 +73,14 @@ Based on the proposed Publicly Verifiable Generalized Secret Sharing (PVGSS) sch
 
 Take two exchangers, i.e., Alice and Bob, and `n` watchers as an example. The DEX optimistically runs in two communication rounds for Alice and Bob, as shown by below Figure. 
 
-![Figure 1](https://github.com/scottocs/pvgss/blob/main/images/dex_acp.png?v=2)
+<p align="center">
+  <img src="[图片URL](https://github.com/scottocs/pvgss/blob/main/images/dex_overview.png?v=2)" width="70%">
+</p>
+
 
 In the first round, each exchanger commits to a secret using `PVGSSShare`, where all the `n+2` entities are considered as shareholders. The correctness of the commitment is guaranteed by the `PVGSSVerify` algorithm. The access structure is designed as `(2 of (Alice, Bob, (t of (W_1, W_2, ... , W_n))))`, as shown by below Figure. 
 
-<center>
-    ![Figure 2](./images/dex_acp.png "Figure 2: The access structure used in the DEX"){#fig-id-acp width=40%}
-</center>
+![Figure 2](https://github.com/scottocs/pvgss/blob/main/images/dex_overview.png?v=2)
 
 In the second round, each exchanger reveals its decrypted share using `PVGSSPreRecon`. The correctness of share decryption is ensured by `PVGSSKeyVrf`. Then, both Alice and Bob jointly recover each other's secrets using `PVGSSRecon`.
 
