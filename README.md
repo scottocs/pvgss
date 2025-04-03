@@ -19,7 +19,10 @@ Version: 0.8.25-develop
 
 
 # File description
+* `crypto`  The folder includes detailed implementation of LSSS, Shamir SS, GSS (on Group G) and PVGSS.
 
+* `bn128`  The folder contains the source codes of curve BN128, which is compatible with EVM.
+  
 * `main.go`   run this file to test the functionalities of the framework.
 
 * `test/dex_test.go` run this file to test the dex contract and get gas usage.
