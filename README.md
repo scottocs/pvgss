@@ -72,9 +72,9 @@ Version: 0.8.25-develop
 Based on the proposed Publicly Verifiable Generalized Secret Sharing (PVGSS) scheme, we design a Decentralized Exchange (DEX) to allow exchangers to swap tokens fairly and simultaneously. In this research, we merely focus on ERC-20 token exchange. The DEX involves two roles: exchangers and watchers. Anyone can be exchangers and watchers. Each exchanger holds specific types of ERC-20 tokens, while multiple watchers collectively form a passive notary committee to address potential disputes.
 
 Take two exchangers, i.e., Alice and Bob, and `n` watchers as an example. The DEX optimistically runs in two communication rounds for Alice and Bob, as shown by below Figure. 
-<center>
-![Figure 1](https://github.com/scottocs/pvgss/blob/main/images/dex_acp.png?v=2){#fig-id-dex width=70%}
-</center>
+
+![Figure 1](https://github.com/scottocs/pvgss/blob/main/images/dex_acp.png?v=2)
+
 In the first round, each exchanger commits to a secret using `PVGSSShare`, where all the `n+2` entities are considered as shareholders. The correctness of the commitment is guaranteed by the `PVGSSVerify` algorithm. The access structure is designed as `(2 of (Alice, Bob, (t of (W_1, W_2, ... , W_n))))`, as shown by below Figure. 
 
 <center>
