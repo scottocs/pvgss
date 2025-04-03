@@ -1,6 +1,8 @@
-# Proof of concept implementation for "PVGSS and Its appplications in DEX"
+## Publicly Verifiable Generalized Secret Sharing Schemes and Their appplications
 
-# Pre-requisites
+Particularly, The newly proposed cryptographic primitive Publicly Verifiable Generalized Secret Sharing (PVGSS) is implemented using GoLang and a proof of concept implementation about a decentralized exchange (DEX) based on Ethereum is presented.
+
+## Pre-requisites
 
 * `Golang`  https://go.dev/dl/   
 
@@ -17,8 +19,7 @@ Version: 0.8.25-develop
     go install github.com/ethereum/go-ethereum/cmd/abigen@v1.14.3
     ```
 
-
-# File description
+## File description
 * `crypto`  The folder includes detailed implementation of LSSS, Shamir SS, GSS (on Group G) and PVGSS.
 
 * `bn128`  The folder contains the source codes of curve BN128, which is compatible with EVM.
@@ -34,7 +35,7 @@ Version: 0.8.25-develop
 * `genPrvKey.sh`  The script file generates accounts and stores in the`.env` file.
 
 
-# How to run
+## How to run
 
 1. Generate private keys to generate the `.env` file
 
@@ -65,4 +66,23 @@ Version: 0.8.25-develop
     ```bash
     go run main.go
     ```
+
+## Introduction to the application of DEX
+
+Based on the proposed Publicly Verifiable Generalized Secret Sharing (PVGSS) scheme, we design a Decentralized Exchange (DEX) to allow exchangers to swap tokens fairly and simultaneously. In this research, we merely focus on ERC-20 token exchange. The DEX involves two roles: exchangers and watchers. Anyone can be exchangers and watchers. Each exchanger holds specific types of ERC-20 tokens, while multiple watchers collectively form a passive notary committee to address potential disputes.
+
+Take two exchangers, i.e., Alice and Bob, and `n` watchers as an example. The DEX optimistically runs in two communication rounds for Alice and Bob, as shown by below Figure. 
+<center>
+![Figure 1](./images/dex_overview.png "Figure 1: The DEX based on the proposed PVGSS"){#fig-id-dex width=70%}
+</center>
+In the first round, each exchanger commits to a secret using `PVGSSShare`, where all the `n+2` entities are considered as shareholders. The correctness of the commitment is guaranteed by the `PVGSSVerify` algorithm. The access structure is designed as `(2 of (Alice, Bob, (t of (W_1, W_2, ... , W_n))))`, as shown by below Figure. 
+
+<center>
+    ![Figure 2](./images/dex_acp.png "Figure 2: The access structure used in the DEX"){#fig-id-acp width=40%}
+</center>
+
+In the second round, each exchanger reveals its decrypted share using `PVGSSPreRecon`. The correctness of share decryption is ensured by `PVGSSKeyVrf`. Then, both Alice and Bob jointly recover each other's secrets using `PVGSSRecon`.
+
+In the pessimistic occasion where a player complains to the watchers, who will be involved to resolve dispute using `PVGSSPreRecon`.
+Note that the access structure of the DEX not only tolerates a faulty exchanger but also tolerates `n-t` faulty watchers.
 
