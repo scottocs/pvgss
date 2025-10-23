@@ -379,10 +379,29 @@ contract Dex
         return VerifyResult;
     }
 
-    function PVGSSKeyVrf(G1Point memory C, G1Point memory decShare, G2Point memory pk2,G2Point memory g2) public payable returns (bool) {
-        bool isKeyValid = pairingProd2(decShare, pk2, negate(C), g2);
-        KeyVerifyResult.push(isKeyValid);
-        return isKeyValid;
+
+    function PVGSSKeyVrf(G1Point memory C, G1Point memory decShare, G1Point memory pk1, G1Point memory com1, G1Point memory com2, uint256 challenge, uint256 response) public payable returns (bool) {
+        
+        G1Point memory L1 = g1mul(C, response);
+        G1Point memory R1_term = g1mul(decShare, challenge);
+        G1Point memory R1 = g1add(com1, R1_term);
+
+        if (L1.X != R1.X || L1.Y != R1.Y) {
+            KeyVerifyResult.push(false);
+            return false;
+        }
+
+        G1Point memory L2 = g1mul(pk1, response);
+        G1Point memory R2_term = g1mul(G1, challenge);
+        G1Point memory R2 = g1add(com2, R2_term);
+        
+        if (L2.X != R2.X || L2.Y != R2.Y) {
+            KeyVerifyResult.push(false);
+            return false;
+        }
+
+        KeyVerifyResult.push(true);
+        return true;
     }
 
     function GetKeyVrfResult() public view returns (bool []memory) {
@@ -774,7 +793,7 @@ contract Dex
         emit SessionStateUpdated(id, session.state);
     }
 
-    function swap2(uint256 id, G1Point memory decShare) external onlyExchanger(id){
+    function swap2(uint256 id, G1Point memory decShare, G1Point memory com1, G1Point memory com2, uint256 challenge, uint256 response) external onlyExchanger(id){
         Session storage session = sessions[id];
         // Check session state
         require(session.state == SessionState.finishSwap1 || session.state == SessionState.halfSwap2, "Session state is invalid for swap2");
@@ -783,7 +802,7 @@ contract Dex
         require(stakedETH[msg.sender] >= MINIMAL_EXCHANGER_STAKE, "Insufficient stake");
 
         // Invoke PVGSSKeyVrf and store decShare
-        require (PVGSSKeyVrf(session.Cshares1[msg.sender], decShare, pubkey2[msg.sender], G2) == true, "KeyVrf failed");
+        require (PVGSSKeyVrf(session.Cshares1[msg.sender], decShare, pubkey1[msg.sender], com1, com2, challenge, response) == true, "KeyVrf failed");
 
         session.shares[msg.sender] = decShare;
         if (msg.sender == session.exchangers[0]) {
@@ -865,14 +884,14 @@ contract Dex
     }
 
     // Watcher submits S_i to resolve dispute
-    function submitWatcherShare(uint256 id, G1Point memory decShare) external {
+    function submitWatcherShare(uint256 id, G1Point memory decShare, G1Point memory com1, G1Point memory com2, uint256 challenge, uint256 response) external {
         Session storage session = sessions[id];
 
         require(session.state == SessionState.Complain, "Session is not complained");
         require(block.timestamp <= session.expiration2, "Session is out of t2");
         require(isWatcher(id, msg.sender), "Only watchers can submit share");
 
-        require(PVGSSKeyVrf(session.Cshares1[msg.sender], decShare, pubkey2[msg.sender], G2) == true, "KeyVrf failed");
+        require (PVGSSKeyVrf(session.Cshares1[msg.sender], decShare, pubkey1[msg.sender], com1, com2, challenge, response) == true, "KeyVrf failed");
         session.shares[msg.sender] = decShare;
         session.watcher_flag[msg.sender] = true;
     }

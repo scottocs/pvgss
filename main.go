@@ -18,6 +18,7 @@ import (
 	// bn128 "github.com/fentec-project/bn256"
 	bn128 "pvgss/bn128"
 
+	"pvgss/crypto/dleq"
 	"pvgss/crypto/pvgss-lsss2/lsss"
 
 	pvgss_lsss "pvgss/crypto/pvgss-lsss2/pvgss_lsss"
@@ -182,15 +183,16 @@ func main() {
 
 	// 4. PVGSSPreRecon
 	ldecShares := make([]*bn128.G1, num)
+	lproofs := make([]*dleq.DLEQProof, num)
 	for i := 0; i < num; i++ {
-		ldecShares[i], _ = pvgss_lsss.PVGSSPreRecon(lC[i], SK[i])
+		ldecShares[i], lproofs[i], _ = pvgss_lsss.PVGSSPreRecon(lC[i], SK[i])
 	}
 
 	// 5. PVGSSKeyVrf
 	// Off-chain
 	lofchainIsKeyValid := make([]bool, 2)
 	for i := 0; i < 2; i++ {
-		lofchainIsKeyValid[i], _ = pvgss_lsss.PVGSSKeyVrf(lC[i], ldecShares[i], PK2[i])
+		lofchainIsKeyValid[i], _ = pvgss_lsss.PVGSSKeyVrf(lC[i], ldecShares[i], PK2[i], lproofs[i])
 	}
 	fmt.Println("Off-chain DecShares verification result =  = ", lofchainIsKeyValid)
 
@@ -261,15 +263,16 @@ func main() {
 
 	// 4. PVGSSPreRecon
 	decShares := make([]*bn128.G1, num)
+	proofs := make([]*dleq.DLEQProof, num)
 	for i := 0; i < num; i++ {
-		decShares[i], _ = pvgss_sss.PVGSSPreRecon(C[i], SK[i])
+		decShares[i], proofs[i], _ = pvgss_sss.PVGSSPreRecon(C[i], SK[i])
 	}
 
 	// 5. PVGSSKeyVrf
 	// Off-chain
 	ofchainIsKeyValid := make([]bool, 2)
 	for i := 0; i < 2; i++ {
-		ofchainIsKeyValid[i], _ = pvgss_sss.PVGSSKeyVrf(C[i], decShares[i], PK2[i])
+		ofchainIsKeyValid[i], _ = pvgss_sss.PVGSSKeyVrf(C[i], decShares[i], PK2[i], proofs[i])
 	}
 	fmt.Println("Off-chain DecShares verification result =  = ", ofchainIsKeyValid)
 

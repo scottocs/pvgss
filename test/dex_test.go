@@ -8,6 +8,7 @@ import (
 	"os"
 	bn128 "pvgss/bn128"
 	"pvgss/compile/contract/Dex"
+	"pvgss/crypto/dleq"
 	"pvgss/crypto/pvgss-lsss2/lsss"
 	"pvgss/crypto/pvgss-lsss2/pvgss_lsss"
 	"pvgss/crypto/pvgss-sss/gss"
@@ -162,15 +163,16 @@ func TestDexGasLSSS(t *testing.T) {
 
 		// 4. PVGSSPreRecon
 		ldecShares := make([]*bn128.G1, num)
+		lproofs := make([]*dleq.DLEQProof, num)
 		for i := 0; i < num; i++ {
-			ldecShares[i], _ = pvgss_lsss.PVGSSPreRecon(lC[i], SK[i])
+			ldecShares[i], lproofs[i], _ = pvgss_lsss.PVGSSPreRecon(lC[i], SK[i])
 		}
 
 		// 5. PVGSSKeyVrf
 		// Off-chain
 		lofchainIsKeyValid := make([]bool, num)
 		for i := 0; i < num; i++ {
-			lofchainIsKeyValid[i], _ = pvgss_lsss.PVGSSKeyVrf(lC[i], ldecShares[i], PK2[i])
+			lofchainIsKeyValid[i], _ = pvgss_lsss.PVGSSKeyVrf(lC[i], ldecShares[i], PK1[i], lproofs[i])
 		}
 
 		// On-chain  account2 call swap1 in t1
@@ -203,7 +205,7 @@ func TestDexGasLSSS(t *testing.T) {
 		//swap2
 		log.Println("account1 swap2 in t1")
 		auth = utils.Transact(client, privateKeys[0], big.NewInt(0))
-		tx, _ = dexInstance.Swap2(auth, orderId, utils.G1ToPoint(ldecShares[0]))
+		tx, _ = dexInstance.Swap2(auth, orderId, utils.G1ToPoint(ldecShares[0]), utils.G1ToPoint(lproofs[0].C1), utils.G1ToPoint(lproofs[0].C2), lproofs[1].Challenge, lproofs[0].Response)
 		receipt, _ = bind.WaitMined(context.Background(), client, tx)
 		log.Println("On-chain Swap2 Gas cost = ", receipt.GasUsed)
 
@@ -392,15 +394,16 @@ func TestDexGasSSS(t *testing.T) {
 
 		// 4. PVGSSPreRecon
 		decShares := make([]*bn128.G1, num)
+		proofs := make([]*dleq.DLEQProof, num)
 		for i := 0; i < num; i++ {
-			decShares[i], _ = pvgss_sss.PVGSSPreRecon(C[i], SK[i])
+			decShares[i], proofs[i], _ = pvgss_sss.PVGSSPreRecon(C[i], SK[i])
 		}
 
 		// 5. PVGSSKeyVrf
 		// Off-chain
 		ofchainIsKeyValid := make([]bool, num)
 		for i := 0; i < num; i++ {
-			ofchainIsKeyValid[i], _ = pvgss_sss.PVGSSKeyVrf(C[i], decShares[i], PK2[i])
+			ofchainIsKeyValid[i], _ = pvgss_sss.PVGSSKeyVrf(C[i], decShares[i], PK1[i], proofs[i])
 		}
 		log.Println("Of-chain KeyVerification result = ", ofchainIsKeyValid)
 
@@ -435,7 +438,7 @@ func TestDexGasSSS(t *testing.T) {
 		//swap2
 		log.Println("account1 swap2 in t1")
 		auth = utils.Transact(client, privateKeys[0], big.NewInt(0))
-		tx, _ = dexInstance.Swap2(auth, orderId, utils.G1ToPoint(decShares[0]))
+		tx, _ = dexInstance.Swap2(auth, orderId, utils.G1ToPoint(decShares[0]), utils.G1ToPoint(proofs[0].C1), utils.G1ToPoint(proofs[0].C2), proofs[1].Challenge, proofs[0].Response)
 		receipt, _ = bind.WaitMined(context.Background(), client, tx)
 		log.Println("On-chain Swap2 Gas cost = ", receipt.GasUsed)
 

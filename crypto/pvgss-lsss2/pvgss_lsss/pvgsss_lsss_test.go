@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
 	bn128 "pvgss/bn128"
+	"pvgss/crypto/dleq"
 
 	// "pvgss/crypto/pvgsslsss/lsss"
 	"testing"
@@ -90,8 +91,9 @@ func TestPVGSS(t *testing.T) {
 
 	// 4. PVGSSPreRecon
 	decShares := make([]*bn128.G1, num)
+	proofs := make([]*dleq.DLEQProof, num)
 	for i := 0; i < num; i++ {
-		decShares[i], err = PVGSSPreRecon(C[i], SK[i])
+		decShares[i], proofs[i], err = PVGSSPreRecon(C[i], SK[i])
 		if err != nil {
 			t.Fatalf("pvgss share decryption failed: %v\n", err)
 		}
@@ -100,7 +102,7 @@ func TestPVGSS(t *testing.T) {
 	// 5. PVGSSKeyVrf
 	isKeyValid := make([]bool, num)
 	for i := 0; i < num; i++ {
-		isKeyValid[i], err = PVGSSKeyVrf(C[i], decShares[i], PK2[i])
+		isKeyValid[i], err = PVGSSKeyVrf(C[i], decShares[i], PK1[i], proofs[i])
 		if err != nil || isKeyValid[i] == false {
 			t.Fatalf("pvgss share decryption verify failed: %v\n", err)
 		}
@@ -284,8 +286,9 @@ func TestLSSSPVGSS(t *testing.T) {
 
 	// fmt.Printf("one user : average PVGSSPreRecon time over %d runs: %s\n", numRuns, averageDuration)
 
+	proofs := make([]*dleq.DLEQProof, num)
 	for i := 0; i < num; i++ {
-		decShares[i], _ = PVGSSPreRecon(C[i], SK[i])
+		decShares[i], proofs[i], _ = PVGSSPreRecon(C[i], SK[i])
 	}
 
 	// 5. PVGSSKeyVrf
@@ -294,7 +297,7 @@ func TestLSSSPVGSS(t *testing.T) {
 
 	// startTime := time.Now()
 	// for i := 0; i < numRuns; i++ {
-	// 	_, _ = PVGSSKeyVrf(C[0], decShares[0], PK2[0])
+	// 	_, _ = PVGSSKeyVrf(C[0], decShares[0], PK2[0], proofs[0])
 	// }
 	// endTime := time.Now()
 	// totalDuration = endTime.Sub(startTime)
@@ -304,7 +307,7 @@ func TestLSSSPVGSS(t *testing.T) {
 	// fmt.Printf("one user : average PVGSSKeyVrf time over %d runs: %s\n", numRuns, averageDuration)
 
 	for i := 0; i < 2; i++ { // It is a example : Verify the decryption keys of Alice and Bob
-		ofchainIsKeyValid[i], _ = PVGSSKeyVrf(C[i], decShares[i], PK2[i])
+		ofchainIsKeyValid[i], _ = PVGSSKeyVrf(C[i], decShares[i], PK1[i], proofs[i])
 	}
 	fmt.Println("Off-chain DecShares verification result = ", ofchainIsKeyValid)
 

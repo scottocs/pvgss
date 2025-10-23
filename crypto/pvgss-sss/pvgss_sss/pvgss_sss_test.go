@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/big"
 	bn128 "pvgss/bn128"
+	"pvgss/crypto/dleq"
 	"pvgss/crypto/pvgss-sss/gss"
 	"testing"
 	"time"
@@ -103,10 +104,11 @@ func TestPVGSS(t *testing.T) {
 
 	// 4.PreRecon
 	decShares := make([]*bn128.G1, num)
+	proofs := make([]*dleq.DLEQProof, num)
 
 	// startTime := time.Now()
 	// for i := 0; i < numRuns; i++ {
-	// 	_, _ = PVGSSPreRecon(C[0], SK[0])
+	// 	_, _, _ = PVGSSPreRecon(C[0], SK[0])
 	// }
 	// endTime := time.Now()
 	// totalDuration = endTime.Sub(startTime)
@@ -116,7 +118,7 @@ func TestPVGSS(t *testing.T) {
 	// fmt.Printf("one user : average PVGSSPreRecon time over %d runs: %s\n", numRuns, averageDuration)
 
 	for i := 0; i < num; i++ {
-		decShares[i], err = PVGSSPreRecon(C[i], SK[i])
+		decShares[i], proofs[i], err = PVGSSPreRecon(C[i], SK[i])
 		if err != nil {
 			t.Fatalf("pvgss share decryption failed: %v\n", err)
 		}
@@ -127,7 +129,7 @@ func TestPVGSS(t *testing.T) {
 
 	// startTime := time.Now()
 	// for i := 0; i < numRuns; i++ {
-	// 	_, _ = PVGSSKeyVrf(C[0], decShares[0], PK2[0])
+	// 	_, _ = PVGSSKeyVrf(C[0], decShares[0], PK2[0], proofs[0])
 	// }
 	// endTime := time.Now()
 	// totalDuration = endTime.Sub(startTime)
@@ -137,7 +139,7 @@ func TestPVGSS(t *testing.T) {
 	// fmt.Printf("one user : average PVGSSKeyVrf time over %d runs: %s\n", numRuns, averageDuration)
 
 	for i := 0; i < 2; i++ { // It is a example : Verify the decryption keys of Alice and Bob
-		isKeyValid[i], err = PVGSSKeyVrf(C[i], decShares[i], PK2[i])
+		isKeyValid[i], err = PVGSSKeyVrf(C[i], decShares[i], PK1[i], proofs[i])
 		if err != nil || isKeyValid[i] == false {
 			t.Fatalf("pvgss share decryption verify failed: %v\n", err)
 		}

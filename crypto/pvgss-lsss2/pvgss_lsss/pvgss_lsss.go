@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	bn128 "pvgss/bn128"
+	"pvgss/crypto/dleq"
 	"pvgss/crypto/pvgss-lsss2/grp_lsss"
 	"pvgss/crypto/pvgss-lsss2/lsss"
 )
@@ -108,30 +109,55 @@ func PVGSSVerify(C []*bn128.G1, prfs *Prf, invmatrix0, invmatrix1 [][]*big.Int, 
 	return true, nil
 }
 
-func PVGSSPreRecon(C *bn128.G1, sk *big.Int) (*bn128.G1, error) {
+func PVGSSPreRecon(C *bn128.G1, sk *big.Int) (*bn128.G1, *dleq.DLEQProof, error) {
 	skInv := new(big.Int).ModInverse(sk, bn128.Order)
 	if skInv == nil {
-		return nil, fmt.Errorf("no inverse for sk")
+		return nil, nil, fmt.Errorf("no inverse for sk")
 	}
 	if new(big.Int).Mod(new(big.Int).Mul(sk, skInv), bn128.Order).Cmp(big.NewInt(1)) != 0 {
-		return nil, fmt.Errorf("inverse for sk is wrong")
+		return nil, nil, fmt.Errorf("inverse for sk is wrong")
 	}
 	if skInv.Cmp(big.NewInt(0)) == -1 {
-		return nil, fmt.Errorf("inverse for sk is neg")
+		return nil, nil, fmt.Errorf("inverse for sk is neg")
 	}
 	decShare := new(bn128.G1).ScalarMult(C, skInv)
-	return decShare, nil
+
+	// Generate DLEQ proof for decShare = C^skInv
+	// 	We need to prove that log_C(decShare) = log_pk1(g1) where g1 = pk1^skInv
+	g1 := new(bn128.G1).ScalarBaseMult(big.NewInt(1)) // generator of G1
+	pk1 := new(bn128.G1).ScalarMult(g1, sk)           // pk1 = g1^sk
+
+	// Calculate powers: (decShare, g1)
+	powers := &dleq.Powers{
+		G1: decShare, // decShare = C^skInv
+		G2: g1,       // g1 = pk1^skInv (since pk1 = g1^sk, so g1 = pk1^skInv)
+	}
+
+	// Generate DLEQ proof using (C, pk1) as generators
+	proof, err := dleq.DLEQProve(C, pk1, skInv, powers)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to generate DLEQ proof: %v", err)
+	}
+
+	return decShare, proof, nil
 }
 
-func PVGSSKeyVrf(C, decShare *bn128.G1, pk2 *bn128.G2) (bool, error) {
-	gen2 := new(bn128.G2).ScalarBaseMult(big.NewInt(1))
-	left := bn128.Pair(decShare, pk2)
-	right := bn128.Pair(C, gen2)
-	if left.String() != right.String() {
-		fmt.Println("left:", left.String())
-		fmt.Println("right:", right.String())
-		return false, fmt.Errorf("check decryption fails")
+func PVGSSKeyVrf(C, decShare *bn128.G1, pk1 *bn128.G1, proof *dleq.DLEQProof) (bool, error) {
+	// Use DLEQ verification instead of pairing verification
+	g1 := new(bn128.G1).ScalarBaseMult(big.NewInt(1)) // generator of G1
+
+	// Calculate powers: (decShare, g1)
+	// We need to verify that log_C(decShare) = log_pk1(g1)
+	powers := &dleq.Powers{
+		G1: decShare, // decShare = C^skInv
+		G2: g1,       // g1 = pk1^skInv
 	}
+
+	// Verify DLEQ proof using (C, pk1) as generators
+	if !dleq.DLEQVerify(C, pk1, powers, proof) {
+		return false, fmt.Errorf("DLEQ verification failed")
+	}
+
 	return true, nil
 }
 
