@@ -130,7 +130,21 @@ func TestLSSS(t *testing.T) {
 	// secret := big.NewInt(int64(5))
 	matrix := Convert(AA)
 	shares, _ := LSSSShare(secret, matrix)
-	// fmt.Println("shares = ", shares)
+
+	//Calculate the parity-check matrix
+	verMatrix := GenerateParityMatrix(matrix)
+	PrintMatrix(verMatrix)
+
+	//Transfer secret shares as shares matrix with 1 column
+	sharesMatrix := SetToMatrix(shares)
+	//sharesMatrix[0][0] = big.NewInt(int64(8))
+	fmt.Printf("sharesMatrix=%v\n", sharesMatrix)
+	resultMatrix, _ := MultiplyMatrix(verMatrix, sharesMatrix)
+	if IsZeroMatrixMod(resultMatrix) {
+		fmt.Printf("Valid LSSS Shares\n")
+	} else {
+		fmt.Printf("Invalid LSSS Shares\n")
+	}
 
 	I := make([]int, 2)
 	I[0] = 0
