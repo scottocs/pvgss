@@ -26,7 +26,7 @@ func TestSSS(t *testing.T) {
 		I[i] = big.NewInt(int64(i + 1))
 	}
 
-	secret, err := Recon(shares[:threshold], I)
+	secret, err := Recon(shares, I, threshold)
 	if err != nil {
 		t.Fatalf("Error in Recon: %v", err)
 	}

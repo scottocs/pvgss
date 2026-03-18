@@ -3,6 +3,7 @@ package gss
 
 import (
 	"errors"
+	"fmt"
 	"math/big"
 	"pvgss/crypto/pvgss-sss/sss"
 )
@@ -22,6 +23,12 @@ func GSSShare(secret *big.Int, AA *Node) ([]*big.Int, error) {
 		return s, nil
 	} else {
 		shares, err := sss.Share(secret, AA.Childrennum, AA.T)
+		if sss.RSCodeVerify(shares, AA.T) {
+			fmt.Printf("Valid shares!!!\n")
+		} else {
+			fmt.Printf("Invalid shares!!!\n")
+		}
+
 		if err != nil {
 			return nil, err
 		}
@@ -71,7 +78,10 @@ func GSSRecon(AA *Node, Q []*big.Int) (*big.Int, *big.Int, error) {
 		return nil, nil, errors.New("insufficient shares for non-leaf node")
 	}
 
-	recovered, err := sss.Recon(childShares[:AA.T], childIdx[:AA.T])
+	fmt.Printf("childShares=%v\n", childShares)
+	fmt.Printf("childIdx=%v\n", childIdx)
+	fmt.Printf("Threshold=%v\n", AA.T)
+	recovered, err := sss.Recon(childShares, childIdx[:AA.T], AA.T)
 	if err != nil {
 		return nil, nil, err
 	}
