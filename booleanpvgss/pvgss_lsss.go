@@ -4,11 +4,12 @@ package pvgss_lsss
 import (
 	"crypto/sha256"
 	"fmt"
+	"math/big"
+
 	bn128 "github.com/fentec-project/bn256"
 	lib "github.com/fentec-project/gofe/abe"
 	"github.com/fentec-project/gofe/data"
 	"github.com/fentec-project/gofe/sample"
-	"math/big"
 )
 
 type GSS struct {
@@ -81,6 +82,20 @@ func NewPvGSS() *PvGSS {
 		G2: gen2,
 		Gt: bn128.Pair(gen1, gen2),
 	}
+}
+
+// Transfer MSP as Matrix
+func MSPtoMatrix(msp lib.MSP) [][]*big.Int {
+	rows := msp.Mat.Rows()
+	cols := msp.Mat.Cols()
+	matrix := make([][]*big.Int, rows)
+	for i := 0; i < rows; i++ {
+		matrix[i] = make([]*big.Int, cols)
+		for j := 0; j < cols; j++ {
+			matrix[i][j] = msp.Mat[i][j].Mod(msp.Mat[i][j], bn128.Order)
+		}
+	}
+	return matrix
 }
 
 func (a *GSS) LSSShare(s *big.Int, msp *lib.MSP) ([]*GSSShare, error) {

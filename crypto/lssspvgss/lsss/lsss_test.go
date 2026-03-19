@@ -7,7 +7,8 @@ import (
 	bn128 "pvgss/bn128"
 
 	// "pvgss/crypto/pvgss-lsss2/lsss"
-	"pvgss/crypto/pvgss-sss/gss"
+	"pvgss/crypto/lssspvgss/opmatrix"
+	"pvgss/crypto/ssspvgss/gss"
 	"testing"
 )
 
@@ -78,7 +79,7 @@ func TestMul(t *testing.T) {
 
 	B[0][0] = big.NewInt(5)
 	B[1][0] = big.NewInt(2)
-	result, _ := MultiplyMatrix(A, B)
+	result, _ := opmatrix.MultiplyMatrix(A, B)
 	PrintMatrix(result)
 }
 
@@ -132,15 +133,15 @@ func TestLSSS(t *testing.T) {
 	shares, _ := LSSSShare(secret, matrix)
 
 	//Calculate the parity-check matrix
-	verMatrix := GenerateParityMatrix(matrix)
+	verMatrix := opmatrix.GenerateParityMatrix(matrix)
 	PrintMatrix(verMatrix)
 
 	//Transfer secret shares as shares matrix with 1 column
-	sharesMatrix := SetToMatrix(shares)
+	sharesMatrix := opmatrix.SetToMatrix(shares)
 	//sharesMatrix[0][0] = big.NewInt(int64(8))
 	fmt.Printf("sharesMatrix=%v\n", sharesMatrix)
-	resultMatrix, _ := MultiplyMatrix(verMatrix, sharesMatrix)
-	if IsZeroMatrixMod(resultMatrix) {
+	resultMatrix, _ := opmatrix.MultiplyMatrix(verMatrix, sharesMatrix)
+	if opmatrix.IsZeroMatrixMod(resultMatrix) {
 		fmt.Printf("Valid LSSS Shares\n")
 	} else {
 		fmt.Printf("Invalid LSSS Shares\n")
