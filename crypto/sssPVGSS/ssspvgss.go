@@ -1,5 +1,5 @@
 // PVGSS on GSS based on Shamir's secret sharing on G
-package pvgss_sss
+package ssspvgss
 
 import (
 	// "errors"
@@ -9,8 +9,7 @@ import (
 	"math/big"
 	bn128 "pvgss/bn128"
 	"pvgss/crypto/dleq"
-	grpgss "pvgss/crypto/pvgss-sss/grp_gss"
-	"pvgss/crypto/pvgss-sss/gss"
+	gss "pvgss/crypto/sssPVGSS/gss"
 )
 
 type Prf struct {
@@ -151,6 +150,6 @@ func PVGSSKeyVrf(C, decShare *bn128.G1, pk1 *bn128.G1, proof *dleq.DLEQProof) (b
 }
 
 func PVGSSRecon(RAA *gss.Node, Q []*bn128.G1) (*bn128.G1, error) {
-	S, _, _ := grpgss.GrpGSSRecon(RAA, Q)
+	S, _, _ := gss.GrpGSSRecon(RAA, Q)
 	return S, nil
 }

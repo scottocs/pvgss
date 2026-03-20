@@ -205,3 +205,81 @@ func GenerateParityMatrix(M [][]*big.Int) [][]*big.Int {
 	}
 	return H
 }
+
+// GaussJordanInverse computes the inverse of matrix A using Gauss-Jordan elimination.
+// It returns the inverse matrix if it exists, otherwise returns an error.
+// @TODO to optimize in the future
+func GaussJordanInverse(A [][]*big.Int) ([][]*big.Int, error) {
+	p := bn128.Order
+	// Check if the matrix is square
+	n := len(A)
+	for i := 0; i < n; i++ {
+		if len(A[i]) != n {
+			return nil, fmt.Errorf("matrix must be square")
+		}
+	}
+
+	// Create augmented matrix [A | I]
+	augmented := make([][]*big.Int, n)
+	for i := 0; i < n; i++ {
+		augmented[i] = make([]*big.Int, 2*n)
+		for j := 0; j < n; j++ {
+			augmented[i][j] = new(big.Int).Set(A[i][j]) // Copy A into the augmented matrix
+			augmented[i][n+j] = big.NewInt(0)           // Initialize the right side with 0
+		}
+		augmented[i][n+i] = big.NewInt(1) // Set the right side to the identity matrix
+	}
+	// fmt.Print("for1 end\n")
+
+	// Perform Gauss-Jordan elimination
+	for i := 0; i < n; i++ {
+		// Make the diagonal element 1
+		if augmented[i][i].Sign() == 0 {
+			// Find a row below row i where the element in column i is non-zero
+			found := false
+			for j := i + 1; j < n; j++ {
+				if augmented[j][i].Sign() != 0 {
+					// Swap row i with row j
+					augmented[i], augmented[j] = augmented[j], augmented[i]
+					found = true
+					break
+				}
+			}
+			if !found {
+				return nil, fmt.Errorf("matrix is singular and cannot be inverted")
+			}
+		}
+
+		// Inverse of the pivot element
+		inv := new(big.Int).ModInverse(augmented[i][i], p)
+		for j := 0; j < 2*n; j++ {
+			augmented[i][j].Mul(augmented[i][j], inv)
+			augmented[i][j].Mod(augmented[i][j], p)
+		}
+
+		// Eliminate the rest of the column
+		for j := 0; j < n; j++ {
+			if j != i {
+				// Subtract multiples of row i from row j to make the off-diagonal elements 0
+				factor := new(big.Int).Set(augmented[j][i])
+				for k := 0; k < 2*n; k++ {
+					augmented[j][k].Sub(augmented[j][k], new(big.Int).Mul(factor, augmented[i][k]))
+					augmented[j][k].Mod(augmented[j][k], p)
+				}
+			}
+		}
+	}
+	// fmt.Print("for2 end\n")
+
+	// Extract the inverse matrix (right side of the augmented matrix)
+	inverse := make([][]*big.Int, n)
+	for i := 0; i < n; i++ {
+		inverse[i] = make([]*big.Int, n)
+		for j := 0; j < n; j++ {
+			inverse[i][j] = new(big.Int).Set(augmented[i][n+j])
+		}
+	}
+	// fmt.Print("for3 end\n")
+
+	return inverse, nil
+}

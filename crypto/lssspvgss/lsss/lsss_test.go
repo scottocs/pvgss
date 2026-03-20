@@ -7,19 +7,19 @@ import (
 	bn128 "pvgss/bn128"
 
 	// "pvgss/crypto/pvgss-lsss2/lsss"
-	"pvgss/crypto/lssspvgss/opmatrix"
-	"pvgss/crypto/ssspvgss/gss"
+
+	opmatrix "pvgss/crypto/lsssPVGSS/opMatrix"
 	"testing"
 )
 
 func TestExtractFirstThreshold(t *testing.T) {
 	// (2 of (0, 0, 3 of (0,0, 0,0)))
-	root := &gss.Node{
+	root := &Node{
 		IsLeaf:      false,
 		Childrennum: 3,
 		T:           2,
 		Idx:         big.NewInt(0),
-		Children: []*gss.Node{
+		Children: []*Node{
 			{IsLeaf: true, Idx: big.NewInt(1)},
 			{IsLeaf: true, Idx: big.NewInt(2)},
 			{
@@ -27,7 +27,7 @@ func TestExtractFirstThreshold(t *testing.T) {
 				Childrennum: 4,
 				T:           3,
 				Idx:         big.NewInt(3),
-				Children: []*gss.Node{
+				Children: []*Node{
 					{IsLeaf: true, Idx: big.NewInt(1)},
 					{IsLeaf: true, Idx: big.NewInt(2)},
 					{IsLeaf: true, Idx: big.NewInt(3)},
@@ -80,7 +80,7 @@ func TestMul(t *testing.T) {
 	B[0][0] = big.NewInt(5)
 	B[1][0] = big.NewInt(2)
 	result, _ := opmatrix.MultiplyMatrix(A, B)
-	PrintMatrix(result)
+	opmatrix.PrintMatrix(result)
 }
 
 func TestGauss(t *testing.T) {
@@ -98,19 +98,19 @@ func TestGauss(t *testing.T) {
 	A[2][1] = big.NewInt(4)
 	A[2][2] = big.NewInt(2)
 
-	invA, _ := GaussJordanInverse(A)
+	invA, _ := opmatrix.GaussJordanInverse(A)
 	fmt.Println("bn128.Order = ", bn128.Order)
 	fmt.Println("A's invers = ", invA)
 }
 
 func TestLSSS(t *testing.T) {
 	//  (2 of (0, 0, 2 of (0, 0,0)))
-	AA := &gss.Node{
+	AA := &Node{
 		IsLeaf:      false,
 		Childrennum: 3,
 		T:           2,
 		Idx:         big.NewInt(0),
-		Children: []*gss.Node{
+		Children: []*Node{
 			{IsLeaf: true, Idx: big.NewInt(1)},
 			{IsLeaf: true, Idx: big.NewInt(2)},
 			{
@@ -118,7 +118,7 @@ func TestLSSS(t *testing.T) {
 				Childrennum: 3,
 				T:           2,
 				Idx:         big.NewInt(3),
-				Children: []*gss.Node{
+				Children: []*Node{
 					{IsLeaf: true, Idx: big.NewInt(1)},
 					{IsLeaf: true, Idx: big.NewInt(2)},
 					{IsLeaf: true, Idx: big.NewInt(3)},
@@ -130,11 +130,11 @@ func TestLSSS(t *testing.T) {
 	secret, _ := rand.Int(rand.Reader, bn128.Order)
 	// secret := big.NewInt(int64(5))
 	matrix := Convert(AA)
-	shares, _ := LSSSShare(secret, matrix)
+	shares, _ := Share(secret, matrix)
 
 	//Calculate the parity-check matrix
 	verMatrix := opmatrix.GenerateParityMatrix(matrix)
-	PrintMatrix(verMatrix)
+	opmatrix.PrintMatrix(verMatrix)
 
 	//Transfer secret shares as shares matrix with 1 column
 	sharesMatrix := opmatrix.SetToMatrix(shares)
@@ -161,11 +161,61 @@ func TestLSSS(t *testing.T) {
 	for i := 0; i < rows; i++ {
 		recMatrix[i] = matrix[I[i]][:rows]
 	}
-	invRecMatrix, _ := GaussJordanInverse(recMatrix)
-	reconS, _ := LSSSRecon(invRecMatrix, recoverShares, I)
+	invRecMatrix, _ := opmatrix.GaussJordanInverse(recMatrix)
+	reconS, _ := Recon(invRecMatrix, recoverShares, I)
 	fmt.Println("original secret = ", secret)
 	fmt.Println("recover secret  = ", reconS)
 	if reconS.Cmp(secret) == 0 {
+		fmt.Print("Secret reconstruction successful!\n")
+	}
+}
+
+func TestGrpLSSS(t *testing.T) {
+	// MSP =  (2 of (A, B, (2 of (P1, P2, P3))))
+	AA := &Node{
+		IsLeaf:      false,
+		Childrennum: 3,
+		T:           2,
+		Idx:         big.NewInt(0),
+		Children: []*Node{
+			{IsLeaf: true, Idx: big.NewInt(1)},
+			{IsLeaf: true, Idx: big.NewInt(2)},
+			{
+				IsLeaf:      false,
+				Childrennum: 3,
+				T:           2,
+				Idx:         big.NewInt(3),
+				Children: []*Node{
+					{IsLeaf: true, Idx: big.NewInt(1)},
+					{IsLeaf: true, Idx: big.NewInt(2)},
+					{IsLeaf: true, Idx: big.NewInt(3)},
+				},
+			},
+		},
+	}
+
+	secret, _ := rand.Int(rand.Reader, bn128.Order)
+	S := new(bn128.G1).ScalarBaseMult(secret)
+	shares, _ := GrpShare(S, AA)
+	I := make([]int, 3)
+	I[0] = 0
+	I[1] = 2
+	I[2] = 4
+	recoverShares := make([]*bn128.G1, 3)
+	recoverShares[0] = shares[0]
+	recoverShares[1] = shares[2]
+	recoverShares[2] = shares[4]
+	rows := len(I)
+	matrix := Convert(AA)
+	recMatrix := make([][]*big.Int, rows)
+	for i := 0; i < rows; i++ {
+		recMatrix[i] = matrix[I[i]][:rows]
+	}
+	invRecMatrix, _ := opmatrix.GaussJordanInverse(recMatrix)
+	reconS, _ := GrpRecon(invRecMatrix, recoverShares, I)
+	fmt.Println("original secret = ", S)
+	fmt.Println("recover secret  = ", reconS)
+	if reconS.String() == S.String() {
 		fmt.Print("Secret reconstruction successful!\n")
 	}
 }

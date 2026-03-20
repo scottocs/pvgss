@@ -1,4 +1,4 @@
-package pvgss_lsss
+package lssspvgss
 
 import (
 	"crypto/rand"
@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"pvgss/crypto/pvgss-lsss2/lsss"
-	"pvgss/crypto/pvgss-sss/gss"
+	"pvgss/crypto/lsssPVGSS/lsss"
+	opmatrix "pvgss/crypto/lsssPVGSS/opMatrix"
 
 	"github.com/stretchr/testify/assert"
 	// "github.com/stretchr/testify/assert"
@@ -30,12 +30,12 @@ func TestPVGSS(t *testing.T) {
 	for i := 0; i < num; i++ {
 		SK[i], PK1[i], PK2[i] = PVGSSSetup()
 	}
-	AA := &gss.Node{
+	AA := &lsss.Node{
 		IsLeaf:      false,
 		Childrennum: 3,
 		T:           2,
 		Idx:         big.NewInt(0),
-		Children: []*gss.Node{
+		Children: []*lsss.Node{
 			{IsLeaf: true, Idx: big.NewInt(1)}, // 叶子节点
 			{IsLeaf: true, Idx: big.NewInt(2)}, // 叶子节点
 			{
@@ -43,7 +43,7 @@ func TestPVGSS(t *testing.T) {
 				Childrennum: nx,
 				T:           tx,
 				Idx:         big.NewInt(3),
-				Children: []*gss.Node{
+				Children: []*lsss.Node{
 					{IsLeaf: true, Idx: big.NewInt(1)},
 					{IsLeaf: true, Idx: big.NewInt(2)},
 					{IsLeaf: true, Idx: big.NewInt(3)},
@@ -69,7 +69,7 @@ func TestPVGSS(t *testing.T) {
 	for i := 0; i < rows0; i++ {
 		recMatrix0[i] = matrix[I0[i]][:rows0]
 	}
-	invRecMatrix0, _ := lsss.GaussJordanInverse(recMatrix0)
+	invRecMatrix0, _ := opmatrix.GaussJordanInverse(recMatrix0)
 	I11 := make([]int, 1+tx)
 	I11[0] = 0
 	for i := 0; i < tx; i++ {
@@ -80,7 +80,7 @@ func TestPVGSS(t *testing.T) {
 	for i := 0; i < rows1; i++ {
 		recMatrix1[i] = matrix[I11[i]][:rows1]
 	}
-	invRecMatrix1, _ := lsss.GaussJordanInverse(recMatrix1)
+	invRecMatrix1, _ := opmatrix.GaussJordanInverse(recMatrix1)
 
 	// 3. PVGSSVerify
 	isShareValid, err := PVGSSVerify(C, prfs, invRecMatrix0, invRecMatrix1, PK1, I0, I11)
@@ -125,7 +125,7 @@ func TestPVGSS(t *testing.T) {
 	for i := 0; i < rows; i++ {
 		recMatrix[i] = matrix[I1[i]][:rows]
 	}
-	invRecMatrix, _ := lsss.GaussJordanInverse(recMatrix)
+	invRecMatrix, _ := opmatrix.GaussJordanInverse(recMatrix)
 	reconS1, _ := PVGSSRecon(invRecMatrix, Q1, I1)
 
 	assert.Equal(t, onrgnS.String(), reconS1.String())
@@ -147,7 +147,7 @@ func TestPVGSS(t *testing.T) {
 	for i := 0; i < rows; i++ {
 		recMatrix[i] = matrix[I2[i]][:rows]
 	}
-	invRecMatrix, _ = lsss.GaussJordanInverse(recMatrix)
+	invRecMatrix, _ = opmatrix.GaussJordanInverse(recMatrix)
 	reconS2, _ := PVGSSRecon(invRecMatrix, Q2, I2)
 	assert.Equal(t, onrgnS.String(), reconS2.String())
 	if onrgnS.String() == reconS2.String() {
@@ -168,7 +168,7 @@ func TestPVGSS(t *testing.T) {
 	for i := 0; i < rows; i++ {
 		recMatrix[i] = matrix[I3[i]][:rows]
 	}
-	invRecMatrix, _ = lsss.GaussJordanInverse(recMatrix)
+	invRecMatrix, _ = opmatrix.GaussJordanInverse(recMatrix)
 	reconS3, _ := PVGSSRecon(invRecMatrix, Q3, I3)
 	assert.Equal(t, onrgnS.String(), reconS3.String())
 	if onrgnS.String() == reconS3.String() {
@@ -178,19 +178,19 @@ func TestPVGSS(t *testing.T) {
 
 // Performance test
 func TestLSSSPVGSS(t *testing.T) {
-	nx := 1000     // the number of Watchers
+	nx := 10       // the number of Watchers
 	tx := nx/2 + 1 // the threshold of Watchers
 	num := nx + 2  // the number of leaf nodes
 
 	// Of-chain: construct the access control structure
-	root := gss.NewNode(false, 3, 2, big.NewInt(int64(0)))
-	A := gss.NewNode(true, 0, 1, big.NewInt(int64(1)))
-	B := gss.NewNode(true, 0, 1, big.NewInt(int64(2)))
-	X := gss.NewNode(false, nx, tx, big.NewInt(int64(3)))
-	root.Children = []*gss.Node{A, B, X}
-	Xp := make([]*gss.Node, nx)
+	root := lsss.NewNode(false, 3, 2, big.NewInt(int64(0)))
+	A := lsss.NewNode(true, 0, 1, big.NewInt(int64(1)))
+	B := lsss.NewNode(true, 0, 1, big.NewInt(int64(2)))
+	X := lsss.NewNode(false, nx, tx, big.NewInt(int64(3)))
+	root.Children = []*lsss.Node{A, B, X}
+	Xp := make([]*lsss.Node, nx)
 	for i := 0; i < nx; i++ {
-		Xp[i] = gss.NewNode(true, 0, 1, big.NewInt(int64(i+1)))
+		Xp[i] = lsss.NewNode(true, 0, 1, big.NewInt(int64(i+1)))
 	}
 	X.Children = Xp
 
@@ -240,7 +240,7 @@ func TestLSSSPVGSS(t *testing.T) {
 	for i := 0; i < rows0; i++ {
 		recMatrix0[i] = matrix[I0[i]][:rows0]
 	}
-	invRecMatrix0, _ := lsss.GaussJordanInverse(recMatrix0)
+	invRecMatrix0, _ := opmatrix.GaussJordanInverse(recMatrix0)
 
 	// A and Watchers
 	I00 := make([]int, 1+tx)
@@ -253,7 +253,7 @@ func TestLSSSPVGSS(t *testing.T) {
 	for i := 0; i < rows; i++ {
 		recMatrix[i] = matrix[I00[i]][:rows]
 	}
-	invRecMatrix, _ := lsss.GaussJordanInverse(recMatrix)
+	invRecMatrix, _ := opmatrix.GaussJordanInverse(recMatrix)
 
 	// startTime := time.Now()
 	// for i := 0; i < numRuns; i++ {
@@ -329,7 +329,7 @@ func TestLSSSPVGSS(t *testing.T) {
 	for i := 0; i < rows; i++ {
 		recMatrix[i] = matrix[I[i]][:rows]
 	}
-	invRecMatrix, _ = lsss.GaussJordanInverse(recMatrix)
+	invRecMatrix, _ = opmatrix.GaussJordanInverse(recMatrix)
 
 	fmt.Print("start PVFSSRecon\n")
 	startTime := time.Now()

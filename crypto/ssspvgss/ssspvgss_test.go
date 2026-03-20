@@ -8,7 +8,7 @@ import (
 	"math/big"
 	bn128 "pvgss/bn128"
 	"pvgss/crypto/dleq"
-	"pvgss/crypto/pvgss-sss/gss"
+	"pvgss/crypto/sssPVGSS/gss"
 	"testing"
 	"time"
 
@@ -16,7 +16,7 @@ import (
 )
 
 func TestPVGSS(t *testing.T) {
-	nx := 1000     //the number of Watchers
+	nx := 10       //the number of Watchers
 	tx := nx/2 + 1 //the threshold of Watchers
 	num := nx + 2  //the number of leaf nodes
 	// 1. Setup

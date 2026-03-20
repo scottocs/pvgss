@@ -1,4 +1,4 @@
-package pvgss_lsss
+package lssspvgss
 
 import (
 	"crypto/rand"
@@ -7,8 +7,7 @@ import (
 	"math/big"
 	bn128 "pvgss/bn128"
 	"pvgss/crypto/dleq"
-	"pvgss/crypto/pvgss-lsss2/grp_lsss"
-	"pvgss/crypto/pvgss-lsss2/lsss"
+	"pvgss/crypto/lsssPVGSS/lsss"
 )
 
 type Prf struct {
@@ -41,12 +40,12 @@ func PVGSSSetup() (*big.Int, *bn128.G1, *bn128.G2) {
 func PVGSSShare(s *big.Int, matrix [][]*big.Int, PK []*bn128.G1) ([]*bn128.G1, *Prf, error) {
 	C := make([]*bn128.G1, len(PK))
 	Cp := make([]*bn128.G1, len(PK))
-	shares, _ := lsss.LSSSShare(s, matrix)
+	shares, _ := lsss.Share(s, matrix)
 	for i := 0; i < len(PK); i++ {
 		C[i] = new(bn128.G1).ScalarMult(PK[i], shares[i])
 	}
 	sp, _ := rand.Int(rand.Reader, bn128.Order)
-	sharesp, _ := lsss.LSSSShare(sp, matrix)
+	sharesp, _ := lsss.Share(sp, matrix)
 	for i := 0; i < len(PK); i++ {
 		Cp[i] = new(bn128.G1).ScalarMult(PK[i], sharesp[i])
 	}
@@ -86,7 +85,7 @@ func PVGSSVerify(C []*bn128.G1, prfs *Prf, invmatrix0, invmatrix1 [][]*big.Int, 
 	// for i := 0; i < len(invmatrix0); i++ {
 	// 	I0[0] = i
 	// }
-	recoverShat, err := lsss.LSSSRecon(invmatrix0, prfs.Shatarry, I0)
+	recoverShat, err := lsss.Recon(invmatrix0, prfs.Shatarry, I0)
 	if err != nil {
 		return false, fmt.Errorf("GSSRecon fails")
 	}
@@ -99,7 +98,7 @@ func PVGSSVerify(C []*bn128.G1, prfs *Prf, invmatrix0, invmatrix1 [][]*big.Int, 
 	// for i := 0; i < len(invmatrix1); i++ {
 	// 	I1[i+1] = i + 2
 	// }
-	recoverShat, err = lsss.LSSSRecon(invmatrix1, prfs.Shatarry, I1)
+	recoverShat, err = lsss.Recon(invmatrix1, prfs.Shatarry, I1)
 	if err != nil {
 		return false, fmt.Errorf("GSSRecon fails")
 	}
@@ -162,6 +161,6 @@ func PVGSSKeyVrf(C, decShare *bn128.G1, pk1 *bn128.G1, proof *dleq.DLEQProof) (b
 }
 
 func PVGSSRecon(AA [][]*big.Int, Q []*bn128.G1, I []int) (*bn128.G1, error) {
-	S, _ := grp_lsss.GrpLSSSRecon(AA, Q, I)
+	S, _ := lsss.GrpRecon(AA, Q, I)
 	return S, nil
 }
