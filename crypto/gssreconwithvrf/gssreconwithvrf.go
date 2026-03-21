@@ -6,6 +6,7 @@ import (
 	"math/big"
 
 	bn128 "pvgss/bn128"
+	"pvgss/crypto/ssspvgss/gss"
 )
 
 func ReconPolynomial(shares []*big.Int, t int) (bool, error) {
@@ -319,4 +320,155 @@ func GenerateParityMatrix(M [][]*big.Int) [][]*big.Int {
 		}
 	}
 	return H
+}
+
+// ShareInfo 用于存储局部计算所需的份额信息
+type ShareInfo struct {
+	GlobalCol int      // 全局列索引
+	X         *big.Int // 局部 x 坐标
+}
+
+// DualMatrixGenerator 对偶矩阵生成器
+type DualMatrixGenerator struct {
+	Rows         [][]*big.Int // 【修改】直接存储整数矩阵
+	TotalLeaves  int
+	LeafIndexMap map[string]int
+}
+
+// NewDualMatrixGenerator 初始化生成器
+func NewDualMatrixGenerator() *DualMatrixGenerator {
+	return &DualMatrixGenerator{
+		Rows:         make([][]*big.Int, 0),
+		LeafIndexMap: make(map[string]int),
+	}
+}
+
+// CollectLeavesAndMap 遍历树，统计叶子并建立映射
+func CollectLeavesAndMap(g *DualMatrixGenerator, root *gss.Node) {
+	g.TotalLeaves = 0
+	collectLeavesRecursive(g, root)
+}
+
+func collectLeavesRecursive(g *DualMatrixGenerator, node *gss.Node) {
+	if node.IsLeaf {
+		key := node.Idx.String()
+		if _, exists := g.LeafIndexMap[key]; !exists {
+			g.LeafIndexMap[key] = g.TotalLeaves
+			g.TotalLeaves++
+		}
+		return
+	}
+	for _, child := range node.Children {
+		collectLeavesRecursive(g, child)
+	}
+}
+
+// lcmOf 计算最小公倍数
+func lcmOf(a, b *big.Int) *big.Int {
+	if a.Sign() == 0 || b.Sign() == 0 {
+		return big.NewInt(1)
+	}
+	g := new(big.Int).GCD(nil, nil, a, b)
+	temp := new(big.Int).Mul(a, b)
+	return temp.Div(temp, g)
+}
+
+// Generate 遍历访问树并生成对偶矩阵的整数行
+// 直接作为入口函数，同时承担递归任务
+func Generate(g *DualMatrixGenerator, node *gss.Node) {
+	// 终止条件：如果是叶子节点，直接返回
+	if node.IsLeaf {
+		return
+	}
+
+	var shares []ShareInfo
+	currentX := big.NewInt(1)
+
+	// 1. 收集当前节点直接连接的叶子子节点
+	hasDirectLeafChildren := false
+	for _, child := range node.Children {
+		if child.IsLeaf {
+			hasDirectLeafChildren = true
+			key := child.Idx.String()
+			if colIdx, ok := g.LeafIndexMap[key]; ok {
+				shares = append(shares, ShareInfo{
+					GlobalCol: colIdx,
+					X:         new(big.Int).Set(currentX),
+				})
+				currentX.Add(currentX, big.NewInt(1))
+			}
+		}
+	}
+
+	n := len(shares)
+	t := node.T
+
+	// 2. 如果直接子节点中有叶子，且 n > t，则生成 n-t 个线性约束
+	if hasDirectLeafChildren && n > t {
+		for k := t; k < n; k++ {
+			// 临时使用 big.Rat 进行分数计算
+			rowRat := make([]*big.Rat, g.TotalLeaves)
+			for i := range rowRat {
+				rowRat[i] = big.NewRat(0, 1)
+			}
+
+			targetShare := shares[k]
+			rowRat[targetShare.GlobalCol] = big.NewRat(1, 1)
+
+			// 计算拉格朗日插值系数
+			for i := 0; i < t; i++ {
+				baseShare := shares[i]
+				numerator := big.NewRat(1, 1)
+				denominator := big.NewRat(1, 1)
+
+				for j := 0; j < t; j++ {
+					if i == j {
+						continue
+					}
+					xj := shares[j].X
+
+					diffNum := new(big.Int).Sub(targetShare.X, xj)
+					numerator.Mul(numerator, big.NewRat(0, 1).SetInt(diffNum))
+
+					diffDen := new(big.Int).Sub(baseShare.X, xj)
+					denominator.Mul(denominator, big.NewRat(0, 1).SetInt(diffDen))
+				}
+
+				Li := new(big.Rat).Quo(numerator, denominator)
+				currentVal := rowRat[baseShare.GlobalCol]
+				currentVal.Sub(currentVal, Li)
+			}
+
+			// 【关键步骤】将分数行转换为整数行
+			// 1. 计算该行所有分母的最小公倍数 (LCM)
+			lcm := big.NewInt(1)
+			for _, val := range rowRat {
+				if val.Sign() == 0 {
+					continue
+				}
+				den := val.Denom()
+				lcm = lcmOf(lcm, den)
+			}
+
+			// 2. 每个元素乘以 LCM 并取分子，得到整数
+			rowInt := make([]*big.Int, g.TotalLeaves)
+			for cIdx, val := range rowRat {
+				temp := new(big.Rat).Mul(val, big.NewRat(0, 1).SetInt(lcm))
+				rowInt[cIdx] = temp.Num()
+			}
+
+			// 3. 存入整数矩阵
+			g.Rows = append(g.Rows, rowInt)
+		}
+	}
+
+	// 3. 递归处理子节点 (直接调用自身)
+	for _, child := range node.Children {
+		Generate(g, child)
+	}
+}
+
+// GetMatrix 直接返回生成的整数矩阵 [][]*big.Int
+func GetMatrix(g *DualMatrixGenerator) [][]*big.Int {
+	return g.Rows
 }
