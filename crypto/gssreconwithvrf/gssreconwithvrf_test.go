@@ -166,7 +166,7 @@ func TestGSSReconWithVrf(t *testing.T) {
 		P_1.Children = []*node.Node{P_A, P_B}
 		P_E := node.NewNode(true, 0, 1, big.NewInt(int64(1)))
 		P_2.Children = []*node.Node{P_E}
-		recoveredSecret, _, err := gss.GSSRecon(path, Q)
+		recoveredSecret, _ := lsss.Recon(path, Q)
 		if err != nil {
 			t.Fatalf("Reconstruction failed: %v", err)
 		}

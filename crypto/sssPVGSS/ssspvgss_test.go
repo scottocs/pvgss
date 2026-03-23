@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestPVGSS(t *testing.T) {
+func TestSSSPVGSS(t *testing.T) {
 
 	nx := 10       //the number of Watchers
 	tx := nx/2 + 1 //the threshold of Watchers

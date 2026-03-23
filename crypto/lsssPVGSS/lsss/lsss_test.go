@@ -6,216 +6,136 @@ import (
 	"math/big"
 	bn128 "pvgss/bn128"
 
-	"pvgss/crypto/gssreconwithvrf"
-	"pvgss/crypto/lssspvgss/opmatrix"
 	"pvgss/crypto/node"
 	"testing"
 )
 
-func TestExtractFirstThreshold(t *testing.T) {
-	// (2 of (0, 0, 3 of (0,0, 0,0)))
-	root := &node.Node{
-		IsLeaf:      false,
-		Childrennum: 3,
-		T:           2,
-		Idx:         big.NewInt(0),
-		Children: []*node.Node{
-			{IsLeaf: true, Idx: big.NewInt(1)},
-			{IsLeaf: true, Idx: big.NewInt(2)},
-			{
-				IsLeaf:      false,
-				Childrennum: 4,
-				T:           3,
-				Idx:         big.NewInt(3),
-				Children: []*node.Node{
-					{IsLeaf: true, Idx: big.NewInt(1)},
-					{IsLeaf: true, Idx: big.NewInt(2)},
-					{IsLeaf: true, Idx: big.NewInt(3)},
-					{IsLeaf: true, Idx: big.NewInt(4)},
-				},
-			},
-		},
-	}
-
-	x, remainingChildren, threshold, n := ExtractFirstThreshold(root)
-
-	fmt.Println("x = ", x)
-	fmt.Println("remainingChildren", remainingChildren[0])
-
-	fmt.Printf("The threshold structure of the stripping: (%d of %d)\n", threshold, n)
-	fmt.Println("The remaining substructures:")
-	for _, child := range remainingChildren {
-		if child.IsLeaf {
-			fmt.Printf("Leaf Node (Idx: %d)\n", child.Idx)
-		} else {
-			fmt.Printf("Threshold Node (T: %d, Childrennum: %d, Idx: %d)\n", child.T, child.Childrennum, child.Idx)
-		}
-	}
-
-	M := Convert(root)
-	fmt.Println("M[0].length = ", len(M[0]))
-}
-
-func TestMul(t *testing.T) {
-
-	A := make([][]*big.Int, 4)
-	for i := range A {
-		A[i] = make([]*big.Int, 2)
-	}
-
-	B := make([][]*big.Int, 2)
-	for i := range B {
-		B[i] = make([]*big.Int, 1)
-	}
-
-	A[0][0] = big.NewInt(1)
-	A[0][1] = big.NewInt(1)
-	A[1][0] = big.NewInt(1)
-	A[1][1] = big.NewInt(2)
-	A[2][0] = big.NewInt(1)
-	A[2][1] = big.NewInt(3)
-	A[3][0] = big.NewInt(1)
-	A[3][1] = big.NewInt(3)
-
-	B[0][0] = big.NewInt(5)
-	B[1][0] = big.NewInt(2)
-	result, _ := opmatrix.MultiplyMatrix(A, B)
-	opmatrix.PrintMatrix(result)
-}
-
-func TestGauss(t *testing.T) {
-	A := make([][]*big.Int, 3)
-	for i := range A {
-		A[i] = make([]*big.Int, 3)
-	}
-	A[0][0] = big.NewInt(1)
-	A[0][1] = big.NewInt(2)
-	A[0][2] = big.NewInt(3)
-	A[1][0] = big.NewInt(1)
-	A[1][1] = big.NewInt(3)
-	A[1][2] = big.NewInt(2)
-	A[2][0] = big.NewInt(1)
-	A[2][1] = big.NewInt(4)
-	A[2][2] = big.NewInt(2)
-
-	invA, _ := opmatrix.GaussJordanInverse(A)
-	fmt.Println("bn128.Order = ", bn128.Order)
-	fmt.Println("A's invers = ", invA)
-}
-
 func TestLSSS(t *testing.T) {
-	//  (2 of (0, 0, 2 of (0, 0,0)))
-	AA := &node.Node{
-		IsLeaf:      false,
-		Childrennum: 3,
-		T:           2,
-		Idx:         big.NewInt(0),
-		Children: []*node.Node{
-			{IsLeaf: true, Idx: big.NewInt(1)},
-			{IsLeaf: true, Idx: big.NewInt(2)},
-			{
-				IsLeaf:      false,
-				Childrennum: 3,
-				T:           2,
-				Idx:         big.NewInt(3),
-				Children: []*node.Node{
-					{IsLeaf: true, Idx: big.NewInt(1)},
-					{IsLeaf: true, Idx: big.NewInt(2)},
-					{IsLeaf: true, Idx: big.NewInt(3)},
-				},
-			},
-		},
-	}
 
 	secret, _ := rand.Int(rand.Reader, bn128.Order)
-	// secret := big.NewInt(int64(5))
-	matrix := Convert(AA)
-	shares, _ := Share(secret, matrix)
 
-	//Calculate the parity-check matrix
-	verMatrix := gssreconwithvrf.GenerateParityMatrix(matrix)
-	fmt.Printf("Order=%v\n", bn128.Order)
-	opmatrix.PrintMatrix(verMatrix)
-
-	//Transfer secret shares as shares matrix with 1 column
-	sharesMatrix := opmatrix.SetToMatrix(shares)
-	//sharesMatrix[0][0] = big.NewInt(int64(8))
-	resultMatrix, _ := opmatrix.MultiplyMatrix(verMatrix, sharesMatrix)
-	if opmatrix.IsZeroMatrixMod(resultMatrix) {
-		fmt.Printf("Valid LSSS Shares\n")
-		I := make([]int, 2)
-		I[0] = 0
-		I[1] = 1
-		// I[2] = 4
-		recoverShares := make([]*big.Int, 2)
-		recoverShares[0] = shares[0]
-		recoverShares[1] = shares[1]
-		// recoverShares[2] = shares[4]
-		rows := len(I)
-		// matrix := Convert(AA)
-		recMatrix := make([][]*big.Int, rows)
-		for i := 0; i < rows; i++ {
-			recMatrix[i] = matrix[I[i]][:rows]
-		}
-		invRecMatrix, _ := opmatrix.GaussJordanInverse(recMatrix)
-		reconS, _ := Recon(invRecMatrix, recoverShares, I)
-		fmt.Println("original secret = ", secret)
-		fmt.Println("recover secret  = ", reconS)
-		if reconS.Cmp(secret) == 0 {
-			fmt.Print("Secret reconstruction successful!\n")
-		}
-	} else {
-		fmt.Printf("Invalid LSSS Shares\n")
+	//Access Policy 1
+	nx := 5
+	tx := 3
+	root1 := node.NewNode(false, 3, 2, big.NewInt(int64(0)))
+	A := node.NewNode(true, 0, 1, big.NewInt(int64(1)))
+	B := node.NewNode(true, 0, 1, big.NewInt(int64(2)))
+	X := node.NewNode(false, nx, tx, big.NewInt(int64(3)))
+	root1.Children = []*node.Node{A, B, X}
+	Xp := make([]*node.Node, nx)
+	for i := 0; i < nx; i++ {
+		Xp[i] = node.NewNode(true, 0, 1, big.NewInt(int64(i+1)))
 	}
+	X.Children = Xp
+
+	//Access Policy 2
+	root2 := node.NewNode(false, 3, 3, big.NewInt(int64(0)))
+	P_1 := node.NewNode(false, 3, 2, big.NewInt(int64(1)))
+	P_D := node.NewNode(true, 0, 1, big.NewInt(int64(2)))
+	P_2 := node.NewNode(false, 3, 1, big.NewInt(int64(3)))
+	root2.Children = []*node.Node{P_1, P_D, P_2}
+	P_A := node.NewNode(true, 0, 1, big.NewInt(int64(1)))
+	P_B := node.NewNode(true, 0, 1, big.NewInt(int64(2)))
+	P_C := node.NewNode(true, 0, 1, big.NewInt(int64(3)))
+	P_1.Children = []*node.Node{P_A, P_B, P_C}
+	P_E := node.NewNode(true, 0, 1, big.NewInt(int64(1)))
+	P_F := node.NewNode(true, 0, 1, big.NewInt(int64(2)))
+	P_G := node.NewNode(true, 0, 1, big.NewInt(int64(3)))
+	P_2.Children = []*node.Node{P_E, P_F, P_G}
+
+	//Test access policy 1
+	shares1, _ := Share(secret, root1)
+	lsssI1 := make([]int, tx+1)
+	recoverShares1 := make([]*big.Int, tx+1)
+	recoverShares1[0] = shares1[0]
+	for i := 1; i < tx+1; i++ {
+		lsssI1[i] = i + 1
+		recoverShares1[i] = shares1[lsssI1[i]]
+	}
+	reconS1, err := Recon(root1, recoverShares1, lsssI1)
+	if err != nil {
+		t.Fatalf("LSSS Recon error: %v", err)
+	}
+	fmt.Println("LSSS original secret = ", secret)
+	fmt.Println("LSSS recover secret  = ", reconS1)
+
+	//Test access policy 2
+	shares2, _ := Share(secret, root2)
+	lsssI2 := []int{0, 1, 3, 4}
+	recoverShares2 := make([]*big.Int, len(lsssI2))
+	for i := 0; i < len(lsssI2); i++ {
+		recoverShares2[i] = shares2[lsssI2[i]]
+	}
+	// Prepare the sub-matrix for reconstruction
+	reconS2, err := Recon(root2, recoverShares2, lsssI2)
+	if err != nil {
+		t.Fatalf("LSSS Recon error: %v", err)
+	}
+	fmt.Println("LSSS original secret = ", secret)
+	fmt.Println("LSSS recover secret  = ", reconS2)
 
 }
 
 func TestGrpLSSS(t *testing.T) {
-	// MSP =  (2 of (A, B, (2 of (P1, P2, P3))))
-	AA := &node.Node{
-		IsLeaf:      false,
-		Childrennum: 3,
-		T:           2,
-		Idx:         big.NewInt(0),
-		Children: []*node.Node{
-			{IsLeaf: true, Idx: big.NewInt(1)},
-			{IsLeaf: true, Idx: big.NewInt(2)},
-			{
-				IsLeaf:      false,
-				Childrennum: 3,
-				T:           2,
-				Idx:         big.NewInt(3),
-				Children: []*node.Node{
-					{IsLeaf: true, Idx: big.NewInt(1)},
-					{IsLeaf: true, Idx: big.NewInt(2)},
-					{IsLeaf: true, Idx: big.NewInt(3)},
-				},
-			},
-		},
-	}
+
 	secret, _ := rand.Int(rand.Reader, bn128.Order)
 	S := new(bn128.G1).ScalarBaseMult(secret)
-	shares, _ := GrpShare(S, AA)
 
-	I := make([]int, 3)
-	I[0] = 0
-	I[1] = 2
-	I[2] = 4
-	recoverShares := make([]*bn128.G1, 3)
-	recoverShares[0] = shares[0]
-	recoverShares[1] = shares[2]
-	recoverShares[2] = shares[4]
-	rows := len(I)
-	matrix := Convert(AA)
-	recMatrix := make([][]*big.Int, rows)
-	for i := 0; i < rows; i++ {
-		recMatrix[i] = matrix[I[i]][:rows]
+	//Access Policy 1
+	nx := 5
+	tx := 3
+	root1 := node.NewNode(false, 3, 2, big.NewInt(int64(0)))
+	A := node.NewNode(true, 0, 1, big.NewInt(int64(1)))
+	B := node.NewNode(true, 0, 1, big.NewInt(int64(2)))
+	X := node.NewNode(false, nx, tx, big.NewInt(int64(3)))
+	root1.Children = []*node.Node{A, B, X}
+	Xp := make([]*node.Node, nx)
+	for i := 0; i < nx; i++ {
+		Xp[i] = node.NewNode(true, 0, 1, big.NewInt(int64(i+1)))
 	}
-	invRecMatrix, _ := opmatrix.GaussJordanInverse(recMatrix)
-	reconS, _ := GrpRecon(invRecMatrix, recoverShares, I)
+	X.Children = Xp
+
+	//Access Policy 2
+	root2 := node.NewNode(false, 3, 3, big.NewInt(int64(0)))
+	P_1 := node.NewNode(false, 3, 2, big.NewInt(int64(1)))
+	P_D := node.NewNode(true, 0, 1, big.NewInt(int64(2)))
+	P_2 := node.NewNode(false, 3, 1, big.NewInt(int64(3)))
+	root2.Children = []*node.Node{P_1, P_D, P_2}
+	P_A := node.NewNode(true, 0, 1, big.NewInt(int64(1)))
+	P_B := node.NewNode(true, 0, 1, big.NewInt(int64(2)))
+	P_C := node.NewNode(true, 0, 1, big.NewInt(int64(3)))
+	P_1.Children = []*node.Node{P_A, P_B, P_C}
+	P_E := node.NewNode(true, 0, 1, big.NewInt(int64(1)))
+	P_F := node.NewNode(true, 0, 1, big.NewInt(int64(2)))
+	P_G := node.NewNode(true, 0, 1, big.NewInt(int64(3)))
+	P_2.Children = []*node.Node{P_E, P_F, P_G}
+
+	//Test access policy 1
+	shares1, _ := GrpShare(S, root1)
+	lsssI1 := make([]int, tx+1)
+	lsssI1[0] = 0
+	recoverShares1 := make([]*bn128.G1, 1+tx)
+	recoverShares1[0] = shares1[0]
+	for i := 1; i < tx+1; i++ {
+		recoverShares1[i] = shares1[i+1]
+		lsssI1[i] = i + 1
+	}
+	reconS1, _ := GrpRecon(root1, recoverShares1, lsssI1)
 	fmt.Println("original secret = ", S)
-	fmt.Println("recover secret  = ", reconS)
-	if reconS.String() == S.String() {
+	fmt.Println("recover secret  = ", reconS1)
+	if reconS1.String() == S.String() {
 		fmt.Print("Secret reconstruction successful!\n")
 	}
+
+	//Test access policy 2
+	shares2, _ := GrpShare(S, root2)
+	lsssI2 := []int{0, 1, 3, 4}
+	recoverShares2 := []*bn128.G1{shares2[0], shares2[1], shares2[3], shares2[4]}
+	reconS2, _ := GrpRecon(root2, recoverShares2, lsssI2)
+	fmt.Println("original secret = ", S)
+	fmt.Println("recover secret  = ", reconS2)
+	if reconS2.String() == S.String() {
+		fmt.Print("Secret reconstruction successful!\n")
+	}
+
 }

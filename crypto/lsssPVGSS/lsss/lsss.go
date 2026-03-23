@@ -9,8 +9,8 @@ import (
 	"pvgss/crypto/node"
 )
 
-func Share(s *big.Int, matrix [][]*big.Int) ([]*big.Int, error) {
-	// matrix := Convert(AA)
+func Share(s *big.Int, AA *node.Node) ([]*big.Int, error) {
+	matrix := Convert(AA)
 	if len(matrix) == 0 || len(matrix[0]) == 0 {
 		return nil, fmt.Errorf("Matrix is empty")
 	}
@@ -34,14 +34,27 @@ func Share(s *big.Int, matrix [][]*big.Int) ([]*big.Int, error) {
 	return shares, nil
 }
 
-func Recon(invRecMatrix [][]*big.Int, shares []*big.Int, I []int) (*big.Int, error) {
-	// matrix := Convert(AA)
+func Recon(AA *node.Node, recoverShares []*big.Int, I []int) (*big.Int, error) {
 	rows := len(I)
-	// recMatrix := make([][]*big.Int, rows)
-	// for i := 0; i < len(I); i++ {
-	// 	recMatrix[i] = matrix[I[i]][:rows]
-	// }
-	// invRecMatrix, _ := GaussJordanInverse(recMatrix)
+	// Prepare the sub-matrix for reconstruction
+	matrix := Convert(AA)
+	recMatrix := make([][]*big.Int, rows)
+	for i := 0; i < rows; i++ {
+		idx := I[i]
+		if idx >= len(matrix) {
+			return nil, fmt.Errorf("Index %d out of range (matrix has %d rows)", idx, len(matrix))
+		}
+		// Take the first 'rows' columns of the selected row
+		if len(matrix[idx]) < rows {
+			return nil, fmt.Errorf("Matrix row %d has insufficient columns (%d < %d)", idx, len(matrix[idx]), rows)
+		}
+		recMatrix[i] = matrix[idx][:rows]
+	}
+	// Compute Inverse Matrix
+	invRecMatrix, err := opmatrix.GaussJordanInverse(recMatrix)
+	if err != nil {
+		return nil, fmt.Errorf("Matrix inversion failed: %v", err)
+	}
 	one := make([][]*big.Int, 1)
 	one[0] = make([]*big.Int, rows)
 	for i := 0; i < rows; i++ {
@@ -51,7 +64,10 @@ func Recon(invRecMatrix [][]*big.Int, shares []*big.Int, I []int) (*big.Int, err
 	w, _ := opmatrix.MultiplyMatrix(one, invRecMatrix)
 	shares2 := make([][]*big.Int, rows)
 	for i := 0; i < rows; i++ {
-		shares2[i] = []*big.Int{shares[I[i]]}
+		if recoverShares[i] == nil {
+			return nil, fmt.Errorf("share at index %d is nil", i)
+		}
+		shares2[i] = []*big.Int{recoverShares[i]}
 	}
 	reconS, _ := opmatrix.MultiplyMatrix(w, shares2)
 	s := reconS[0][0]
@@ -83,14 +99,27 @@ func GrpShare(S *bn128.G1, AA *node.Node) ([]*bn128.G1, error) {
 	return shares, nil
 }
 
-func GrpRecon(invRecMatrix [][]*big.Int, shares []*bn128.G1, I []int) (*bn128.G1, error) {
-	// matrix := lsss.Convert(AA)
+func GrpRecon(AA *node.Node, recoverShares []*bn128.G1, I []int) (*bn128.G1, error) {
 	rows := len(I)
-	// recMatrix := make([][]*big.Int, rows)
-	// for i := 0; i < len(I); i++ {
-	// 	recMatrix[i] = matrix[I[i]][:rows]
-	// }
-	// invRecMatrix, _ := lsss.GaussJordanInverse(recMatrix)
+	// Prepare the sub-matrix for reconstruction
+	matrix1 := Convert(AA)
+	recMatrix := make([][]*big.Int, rows)
+	for i := 0; i < rows; i++ {
+		idx := I[i]
+		if idx >= len(matrix1) {
+			return nil, fmt.Errorf("Index %d out of range (matrix has %d rows)", idx, len(matrix1))
+		}
+		// Take the first 'rows' columns of the selected row
+		if len(matrix1[idx]) < rows {
+			return nil, fmt.Errorf("Matrix row %d has insufficient columns (%d < %d)", idx, len(matrix1[idx]), rows)
+		}
+		recMatrix[i] = matrix1[idx][:rows]
+	}
+	// Compute Inverse Matrix
+	invRecMatrix, err := opmatrix.GaussJordanInverse(recMatrix)
+	if err != nil {
+		return nil, fmt.Errorf("Matrix inversion failed: %v", err)
+	}
 	one := make([][]*big.Int, 1)
 	one[0] = make([]*big.Int, rows)
 	for i := 0; i < rows; i++ {
@@ -98,9 +127,13 @@ func GrpRecon(invRecMatrix [][]*big.Int, shares []*bn128.G1, I []int) (*bn128.G1
 	}
 	one[0][0] = big.NewInt(1)
 	w, _ := opmatrix.MultiplyMatrix(one, invRecMatrix)
-	reconS := new(bn128.G1).ScalarBaseMult(big.NewInt(0))
-	for i := 0; i < len(w[0]); i++ {
-		reconS.Add(reconS, new(bn128.G1).ScalarMult(shares[i], w[0][i]))
+	reconS := new(bn128.G1).ScalarBaseMult(big.NewInt(0)) // Identity point
+	for i := 0; i < rows; i++ {
+		if recoverShares[i] == nil {
+			return nil, fmt.Errorf("share at index %d is nil", i)
+		}
+		term := new(bn128.G1).ScalarMult(recoverShares[i], w[0][i])
+		reconS.Add(reconS, term)
 	}
 	return reconS, nil
 }
@@ -129,16 +162,6 @@ func ExtractFirstThreshold(root *node.Node) (*node.Node, []*node.Node, int, int)
 		T:           t,
 		Idx:         root.Idx,
 	}, children, t, n
-}
-
-func NewNode(IsLeaf bool, num int, T int, idx *big.Int) *node.Node {
-	return &node.Node{
-		IsLeaf:      IsLeaf,
-		Children:    []*node.Node{},
-		Childrennum: num,
-		T:           T,
-		Idx:         idx,
-	}
 }
 
 func Convert(F_A *node.Node) [][]*big.Int {
