@@ -29,6 +29,7 @@ func TestGSSReconWithVrf(t *testing.T) {
 	P_F := node.NewNode(true, 0, 1, big.NewInt(int64(2)))
 	P_G := node.NewNode(true, 0, 1, big.NewInt(int64(3)))
 	P_2.Children = []*node.Node{P_E, P_F, P_G}
+	matrix := lsss.Convert(root)
 
 	// ==========================================
 	// Part 1: Test GSS Scheme
@@ -145,12 +146,12 @@ func TestGSSReconWithVrf(t *testing.T) {
 	// ==========================================
 	fmt.Printf("Start to LSSS Scheme!!!\n")
 	//Calculate lsss shares
-	matrix := lsss.Convert(root)
-	lsssshares, _ := lsss.Share(secret, matrix)
+	lsssshares, _ := lsss.Share(secret, root)
 	//Method 1:
 	verLSSSRP, _ := ReconPolynomial(root, lsssshares)
 	if verLSSSRP {
 		fmt.Printf("LSSS Shares Pass ReconPolynomial Test!!!\n")
+		I := []int{0, 1, 3, 4}
 		var Q []*big.Int
 		Q = append(Q, gssshares[0])
 		Q = append(Q, gssshares[1])
@@ -166,7 +167,7 @@ func TestGSSReconWithVrf(t *testing.T) {
 		P_1.Children = []*node.Node{P_A, P_B}
 		P_E := node.NewNode(true, 0, 1, big.NewInt(int64(1)))
 		P_2.Children = []*node.Node{P_E}
-		recoveredSecret, _ := lsss.Recon(path, Q)
+		recoveredSecret, _ := lsss.Recon(root, Q, I)
 		if err != nil {
 			t.Fatalf("Reconstruction failed: %v", err)
 		}
@@ -188,26 +189,8 @@ func TestGSSReconWithVrf(t *testing.T) {
 	if opmatrix.IsZeroMatrixMod(resultPCMatrix) {
 		fmt.Printf("LSSS Shares Pass Parity-Check Matrix Test\n")
 		lsssI := []int{0, 1, 3, 4}
-		rows := len(lsssI)
-		// Prepare the sub-matrix for reconstruction
-		recMatrix := make([][]*big.Int, rows)
-		for i := 0; i < rows; i++ {
-			idx := lsssI[i]
-			if idx >= len(matrix) {
-				t.Fatalf("Index %d out of range (matrix has %d rows)", idx, len(matrix))
-			}
-			// Take the first 'rows' columns of the selected row
-			if len(matrix[idx]) < rows {
-				t.Fatalf("Matrix row %d has insufficient columns (%d < %d)", idx, len(matrix[idx]), rows)
-			}
-			recMatrix[i] = matrix[idx][:rows]
-		}
-		// Compute Inverse Matrix
-		invRecMatrix, err := opmatrix.GaussJordanInverse(recMatrix)
-		if err != nil {
-			t.Fatalf("Matrix inversion failed: %v", err)
-		}
-		reconS, err := lsss.Recon(invRecMatrix, lsssshares, lsssI)
+		recoverLSSSShares := []*big.Int{lsssshares[0], lsssshares[1], lsssshares[3], lsssshares[4]}
+		reconS, err := lsss.Recon(root, recoverLSSSShares, lsssI)
 		if err != nil {
 			t.Fatalf("LSSS Recon error: %v", err)
 		}
