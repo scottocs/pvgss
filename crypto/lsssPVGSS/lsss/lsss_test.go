@@ -8,17 +8,18 @@ import (
 
 	"pvgss/crypto/gssreconwithvrf"
 	"pvgss/crypto/lssspvgss/opmatrix"
+	"pvgss/crypto/node"
 	"testing"
 )
 
 func TestExtractFirstThreshold(t *testing.T) {
 	// (2 of (0, 0, 3 of (0,0, 0,0)))
-	root := &Node{
+	root := &node.Node{
 		IsLeaf:      false,
 		Childrennum: 3,
 		T:           2,
 		Idx:         big.NewInt(0),
-		Children: []*Node{
+		Children: []*node.Node{
 			{IsLeaf: true, Idx: big.NewInt(1)},
 			{IsLeaf: true, Idx: big.NewInt(2)},
 			{
@@ -26,7 +27,7 @@ func TestExtractFirstThreshold(t *testing.T) {
 				Childrennum: 4,
 				T:           3,
 				Idx:         big.NewInt(3),
-				Children: []*Node{
+				Children: []*node.Node{
 					{IsLeaf: true, Idx: big.NewInt(1)},
 					{IsLeaf: true, Idx: big.NewInt(2)},
 					{IsLeaf: true, Idx: big.NewInt(3)},
@@ -104,12 +105,12 @@ func TestGauss(t *testing.T) {
 
 func TestLSSS(t *testing.T) {
 	//  (2 of (0, 0, 2 of (0, 0,0)))
-	AA := &Node{
+	AA := &node.Node{
 		IsLeaf:      false,
 		Childrennum: 3,
 		T:           2,
 		Idx:         big.NewInt(0),
-		Children: []*Node{
+		Children: []*node.Node{
 			{IsLeaf: true, Idx: big.NewInt(1)},
 			{IsLeaf: true, Idx: big.NewInt(2)},
 			{
@@ -117,7 +118,7 @@ func TestLSSS(t *testing.T) {
 				Childrennum: 3,
 				T:           2,
 				Idx:         big.NewInt(3),
-				Children: []*Node{
+				Children: []*node.Node{
 					{IsLeaf: true, Idx: big.NewInt(1)},
 					{IsLeaf: true, Idx: big.NewInt(2)},
 					{IsLeaf: true, Idx: big.NewInt(3)},
@@ -171,12 +172,12 @@ func TestLSSS(t *testing.T) {
 
 func TestGrpLSSS(t *testing.T) {
 	// MSP =  (2 of (A, B, (2 of (P1, P2, P3))))
-	AA := &Node{
+	AA := &node.Node{
 		IsLeaf:      false,
 		Childrennum: 3,
 		T:           2,
 		Idx:         big.NewInt(0),
-		Children: []*Node{
+		Children: []*node.Node{
 			{IsLeaf: true, Idx: big.NewInt(1)},
 			{IsLeaf: true, Idx: big.NewInt(2)},
 			{
@@ -184,7 +185,7 @@ func TestGrpLSSS(t *testing.T) {
 				Childrennum: 3,
 				T:           2,
 				Idx:         big.NewInt(3),
-				Children: []*Node{
+				Children: []*node.Node{
 					{IsLeaf: true, Idx: big.NewInt(1)},
 					{IsLeaf: true, Idx: big.NewInt(2)},
 					{IsLeaf: true, Idx: big.NewInt(3)},

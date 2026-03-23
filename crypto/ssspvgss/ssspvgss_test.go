@@ -8,7 +8,7 @@ import (
 	"math/big"
 	bn128 "pvgss/bn128"
 	"pvgss/crypto/dleq"
-	"pvgss/crypto/sssPVGSS/gss"
+	"pvgss/crypto/node"
 	"testing"
 	"time"
 
@@ -31,14 +31,14 @@ func TestPVGSS(t *testing.T) {
 	var totalDuration time.Duration
 
 	// 2. Share
-	root := gss.NewNode(false, 3, 2, big.NewInt(int64(0)))
-	A := gss.NewNode(true, 0, 1, big.NewInt(int64(1)))
-	B := gss.NewNode(true, 0, 1, big.NewInt(int64(2)))
-	X := gss.NewNode(false, nx, tx, big.NewInt(int64(3)))
-	root.Children = []*gss.Node{A, B, X}
-	Xp := make([]*gss.Node, nx)
+	root := node.NewNode(false, 3, 2, big.NewInt(int64(0)))
+	A := node.NewNode(true, 0, 1, big.NewInt(int64(1)))
+	B := node.NewNode(true, 0, 1, big.NewInt(int64(2)))
+	X := node.NewNode(false, nx, tx, big.NewInt(int64(3)))
+	root.Children = []*node.Node{A, B, X}
+	Xp := make([]*node.Node, nx)
 	for i := 0; i < nx; i++ {
-		Xp[i] = gss.NewNode(true, 0, 1, big.NewInt(int64(i+1)))
+		Xp[i] = node.NewNode(true, 0, 1, big.NewInt(int64(i+1)))
 	}
 	X.Children = Xp
 	s, _ := rand.Int(rand.Reader, bn128.Order)
@@ -61,15 +61,15 @@ func TestPVGSS(t *testing.T) {
 	}
 
 	// 3. Verify
-	path1 := gss.NewNode(false, 2, 2, big.NewInt(int64(0)))
-	path1.Children = []*gss.Node{A, B}
+	path1 := node.NewNode(false, 2, 2, big.NewInt(int64(0)))
+	path1.Children = []*node.Node{A, B}
 
 	I1 := make([]int, 2)
 	I1[0] = 0
 	I1[1] = 1
 
-	path2 := gss.NewNode(false, 2, 2, big.NewInt(int64(0)))
-	path2.Children = []*gss.Node{A, X}
+	path2 := node.NewNode(false, 2, 2, big.NewInt(int64(0)))
+	path2.Children = []*node.Node{A, X}
 
 	I2 := make([]int, tx+1)
 	I2[0] = 0
@@ -168,8 +168,8 @@ func TestPVGSS(t *testing.T) {
 	for i := 1; i < tx+1; i++ {
 		Q2[i] = decShares[i+1]
 	}
-	path2 = gss.NewNode(false, 2, 2, big.NewInt(int64(0)))
-	path2.Children = []*gss.Node{A, X}
+	path2 = node.NewNode(false, 2, 2, big.NewInt(int64(0)))
+	path2.Children = []*node.Node{A, X}
 
 	startTime := time.Now()
 	for i := 0; i < numRuns; i++ {
@@ -196,8 +196,8 @@ func TestPVGSS(t *testing.T) {
 	for i := 1; i < tx+1; i++ {
 		Q3[i] = decShares[i+1]
 	}
-	path3 := gss.NewNode(false, 2, 2, big.NewInt(int64(0)))
-	path3.Children = []*gss.Node{B, X}
+	path3 := node.NewNode(false, 2, 2, big.NewInt(int64(0)))
+	path3.Children = []*node.Node{B, X}
 	reconS3, _ := PVGSSRecon(path3, Q3)
 
 	assert.Equal(t, onrgnS.String(), reconS3.String())

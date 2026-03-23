@@ -6,15 +6,8 @@ import (
 	"math/big"
 	bn128 "pvgss/bn128"
 	"pvgss/crypto/lssspvgss/opmatrix"
+	"pvgss/crypto/node"
 )
-
-type Node struct {
-	IsLeaf      bool
-	Children    []*Node
-	Childrennum int
-	T           int
-	Idx         *big.Int
-}
 
 func Share(s *big.Int, matrix [][]*big.Int) ([]*big.Int, error) {
 	// matrix := Convert(AA)
@@ -35,7 +28,6 @@ func Share(s *big.Int, matrix [][]*big.Int) ([]*big.Int, error) {
 	}
 	shares := make([]*big.Int, matrixRows)
 	lambdas, _ := opmatrix.MultiplyMatrix(matrix, v2)
-	// PrintMatrix(lambdas)
 	for i, lambda := range lambdas {
 		shares[i] = lambda[0]
 	}
@@ -66,7 +58,7 @@ func Recon(invRecMatrix [][]*big.Int, shares []*big.Int, I []int) (*big.Int, err
 	return s, nil
 }
 
-func GrpShare(S *bn128.G1, AA *Node) ([]*bn128.G1, error) {
+func GrpShare(S *bn128.G1, AA *node.Node) ([]*bn128.G1, error) {
 	matrix := Convert(AA)
 	if len(matrix) == 0 || len(matrix[0]) == 0 {
 		return nil, fmt.Errorf("something went wrong")
@@ -114,14 +106,14 @@ func GrpRecon(invRecMatrix [][]*big.Int, shares []*bn128.G1, I []int) (*bn128.G1
 }
 
 // Extract Threshold structure
-func ExtractFirstThreshold(root *Node) (*Node, []*Node, int, int) {
+func ExtractFirstThreshold(root *node.Node) (*node.Node, []*node.Node, int, int) {
 	if root == nil {
 		return nil, nil, 0, 0
 	}
 
 	// If it is a leaf node, there is no threshold structure
 	if root.IsLeaf {
-		return nil, []*Node{root}, 0, 0
+		return nil, []*node.Node{root}, 0, 0
 	}
 
 	// The first non-leaf node is processed and its threshold structure is extracted
@@ -130,7 +122,7 @@ func ExtractFirstThreshold(root *Node) (*Node, []*Node, int, int) {
 	children := root.Children
 
 	// Returns the threshold structure of the current node, as well as its children
-	return &Node{
+	return &node.Node{
 		IsLeaf:      false,
 		Children:    nil,
 		Childrennum: n,
@@ -139,19 +131,19 @@ func ExtractFirstThreshold(root *Node) (*Node, []*Node, int, int) {
 	}, children, t, n
 }
 
-func NewNode(IsLeaf bool, num int, T int, idx *big.Int) *Node {
-	return &Node{
+func NewNode(IsLeaf bool, num int, T int, idx *big.Int) *node.Node {
+	return &node.Node{
 		IsLeaf:      IsLeaf,
-		Children:    []*Node{},
+		Children:    []*node.Node{},
 		Childrennum: num,
 		T:           T,
 		Idx:         idx,
 	}
 }
 
-func Convert(F_A *Node) [][]*big.Int {
+func Convert(F_A *node.Node) [][]*big.Int {
 	// Initialize L and M
-	L := []*Node{F_A}
+	L := []*node.Node{F_A}
 	M := [][]*big.Int{{big.NewInt(1)}}
 	m, d := 1, 1
 	z := 1 // Control loop
@@ -160,8 +152,8 @@ func Convert(F_A *Node) [][]*big.Int {
 		z = 0
 		i := 1
 		var n, t int
-		var threshold *Node
-		var remainingStructure []*Node
+		var threshold *node.Node
+		var remainingStructure []*node.Node
 
 		for i <= m && z == 0 {
 			currentStructure := L[i-1]
@@ -178,7 +170,7 @@ func Convert(F_A *Node) [][]*big.Int {
 			// F_z := L[z-1]
 			m2, d2 := n, t
 			L2 := remainingStructure
-			L1 := make([]*Node, len(L))
+			L1 := make([]*node.Node, len(L))
 			copy(L1, L)
 			M1 := make([][]*big.Int, len(M))
 			for i := range M {
@@ -195,7 +187,7 @@ func Convert(F_A *Node) [][]*big.Int {
 					M[i][j] = big.NewInt(0)
 				}
 			}
-			L = make([]*Node, m1+m2-1)
+			L = make([]*node.Node, m1+m2-1)
 
 			// Updata M and L
 			for u := 0; u < z-1; u++ {

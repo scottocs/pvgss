@@ -3,7 +3,6 @@ package sss
 
 import (
 	"crypto/rand"
-	"fmt"
 	"math/big"
 	bn128 "pvgss/bn128"
 )
@@ -15,7 +14,6 @@ func Share(s *big.Int, n, t int) ([]*big.Int, error) {
 	for i := 1; i < t; i++ {
 		cofficients[i], _ = rand.Int(rand.Reader, bn128.Order)
 	}
-	fmt.Printf("All Cofficinets:%v\n", cofficients)
 	// Generate secret shares
 	shares := make([]*big.Int, n)
 	for i := 0; i < n; i++ {

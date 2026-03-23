@@ -9,6 +9,7 @@ import (
 	"math/big"
 	bn128 "pvgss/bn128"
 	"pvgss/crypto/dleq"
+	"pvgss/crypto/node"
 	gss "pvgss/crypto/ssspvgss/gss"
 )
 
@@ -39,7 +40,7 @@ func PVGSSSetup() (*big.Int, *bn128.G1, *bn128.G2) {
 	return sk, pk1, pk2
 }
 
-func PVGSSShare(s *big.Int, AA *gss.Node, PK []*bn128.G1) ([]*bn128.G1, *Prf, error) {
+func PVGSSShare(s *big.Int, AA *node.Node, PK []*bn128.G1) ([]*bn128.G1, *Prf, error) {
 	C := make([]*bn128.G1, len(PK))
 	Cp := make([]*bn128.G1, len(PK))
 	shares, _ := gss.GSSShare(s, AA)
@@ -72,7 +73,7 @@ func PVGSSShare(s *big.Int, AA *gss.Node, PK []*bn128.G1) ([]*bn128.G1, *Prf, er
 	return C, prfs, nil
 }
 
-func PVGSSVerify(C []*bn128.G1, prfs *Prf, AA *gss.Node, PK []*bn128.G1, RAA *gss.Node, I []int) (bool, error) {
+func PVGSSVerify(C []*bn128.G1, prfs *Prf, AA *node.Node, PK []*bn128.G1, RAA *node.Node, I []int) (bool, error) {
 	// gssShares := make([]*bn128.G1,len(C))
 	Q := make([]*big.Int, len(I))
 	for i := 0; i < len(I); i++ {
@@ -149,7 +150,7 @@ func PVGSSKeyVrf(C, decShare *bn128.G1, pk1 *bn128.G1, proof *dleq.DLEQProof) (b
 	return true, nil
 }
 
-func PVGSSRecon(RAA *gss.Node, Q []*bn128.G1) (*bn128.G1, error) {
+func PVGSSRecon(RAA *node.Node, Q []*bn128.G1) (*bn128.G1, error) {
 	S, _, _ := gss.GrpGSSRecon(RAA, Q)
 	return S, nil
 }

@@ -6,30 +6,17 @@ import (
 	"fmt"
 	"math/big"
 	bn128 "pvgss/bn128"
+	"pvgss/crypto/node"
 	"pvgss/crypto/ssspvgss/sss"
 )
 
-type Node struct {
-	IsLeaf      bool
-	Children    []*Node
-	Childrennum int
-	T           int
-	Idx         *big.Int
-}
-
-func GSSShare(secret *big.Int, AA *Node) ([]*big.Int, error) {
+func GSSShare(secret *big.Int, AA *node.Node) ([]*big.Int, error) {
 	var s []*big.Int
 	if AA.IsLeaf {
 		s = append(s, secret)
 		return s, nil
 	} else {
 		shares, err := sss.Share(secret, AA.Childrennum, AA.T)
-		// if sss.RSCodeVerify(shares, AA.T) {
-		// 	fmt.Printf("Valid shares!!!\n")
-		// } else {
-		// 	fmt.Printf("Invalid shares!!!\n")
-		// }
-
 		if err != nil {
 			return nil, err
 		}
@@ -47,51 +34,58 @@ func GSSShare(secret *big.Int, AA *Node) ([]*big.Int, error) {
 
 // The AA here is different from the AA in GSSShare,
 // the AA here is a subset of the above AA and is a path path that satisfies the access control structure
-func GSSRecon(AA *Node, Q []*big.Int) (*big.Int, *big.Int, error) {
+func GSSRecon(AA *node.Node, Q []*big.Int) (*big.Int, *big.Int, error) {
 	if AA == nil {
 		return nil, nil, errors.New("AA is empty")
 	}
-	// If it is a leaf node, take the secret from Q
-	if AA.IsLeaf {
-		if len(Q) == 0 {
-			return nil, nil, errors.New("insufficient shares for leaf node")
-		}
-		s := Q[0]
-		return s, AA.Idx, nil
-	}
-	// Non-leaf nodes, recursively process each child node
-	childShares := make([]*big.Int, 0, AA.Childrennum)
-	childIdx := make([]*big.Int, 0, AA.Childrennum)
-	// childI := make([]*big.Int, AA.Childrennum)
-	for i, child := range AA.Children[:AA.T] {
-		// childIdx = append(childIdx, child.Idx)
-		share, idx, err := GSSRecon(child, Q[i:])
-		if err != nil {
-			return nil, nil, err
-		}
-		// Collect the secrets of the child nodes
-		childShares = append(childShares, share)
-		childIdx = append(childIdx, idx)
-		// child
-	}
-
-	if len(childShares) < AA.T {
-		return nil, nil, errors.New("insufficient shares for non-leaf node")
-	}
-
-	fmt.Printf("childShares=%v\n", childShares)
-	fmt.Printf("childIdx=%v\n", childIdx)
-	fmt.Printf("Threshold=%v\n", AA.T)
-	recovered, err := sss.Recon(childShares, childIdx[:AA.T], AA.T)
+	// Init offset as 0
+	secret, _, err := reconRecursive(AA, Q, 0)
 	if err != nil {
 		return nil, nil, err
 	}
-	return recovered, AA.Idx, nil
+	return secret, AA.Idx, nil
 }
 
-// A，B and {Pi} 's PK
+func reconRecursive(AA *node.Node, Q []*big.Int, offset int) (*big.Int, int, error) {
+	if AA.IsLeaf {
+		if offset >= len(Q) {
+			return nil, 0, fmt.Errorf("leaf node [ID:%v]: insufficient shares (offset %d out of range)", AA.Idx, offset)
+		}
+		s := Q[offset]
+		// Leaf nodes consume 1 shard
+		return s, 1, nil
+	}
+	childShares := make([]*big.Int, 0, AA.Childrennum)
+	childIdx := make([]*big.Int, 0, AA.Childrennum)
+	// Non-leaf nodes consume the number of shards
+	currentOffset := offset
+	for i := 0; i < AA.Childrennum; i++ {
+		if i >= len(AA.Children) || AA.Children[i] == nil {
+			return nil, 0, fmt.Errorf("node [ID:%v]: missing child at index %d", AA.Idx, i)
+		}
+		child := AA.Children[i]
+		share, consumed, err := reconRecursive(child, Q, currentOffset)
+		if err != nil {
+			return nil, 0, err
+		}
+		childShares = append(childShares, share)
+		childIdx = append(childIdx, child.Idx)
+		currentOffset += consumed
+	}
+	if len(childShares) < AA.T {
+		return nil, 0, fmt.Errorf("node [ID:%v]: insufficient child secrets (%d < %d)", AA.Idx, len(childShares), AA.T)
+	}
+	// 4. Recover the secret using the first t shares
+	recovered, err := sss.Recon(childShares[:AA.T], childIdx[:AA.T], AA.T)
+	if err != nil {
+		return nil, 0, err
+	}
+	// 5. Return the current secret and total consumed shards
+	totalConsumed := currentOffset - offset
+	return recovered, totalConsumed, nil
+}
 
-func GrpGSSShare(Secret *bn128.G1, AA *Node) ([]*bn128.G1, error) {
+func GrpGSSShare(Secret *bn128.G1, AA *node.Node) ([]*bn128.G1, error) {
 	var S []*bn128.G1
 	if AA.IsLeaf {
 		// If it is a leaf node, the secret is added to the result
@@ -115,7 +109,7 @@ func GrpGSSShare(Secret *bn128.G1, AA *Node) ([]*bn128.G1, error) {
 	return S, nil
 }
 
-func GrpGSSRecon(AA *Node, Q []*bn128.G1) (*bn128.G1, *big.Int, error) {
+func GrpGSSRecon(AA *node.Node, Q []*bn128.G1) (*bn128.G1, *big.Int, error) {
 	if AA == nil {
 		return nil, nil, errors.New("AA is empty")
 	}
@@ -150,17 +144,7 @@ func GrpGSSRecon(AA *Node, Q []*bn128.G1) (*bn128.G1, *big.Int, error) {
 	return recovered, AA.Idx, nil
 }
 
-func NewNode(IsLeaf bool, num int, T int, idx *big.Int) *Node {
-	return &Node{
-		IsLeaf:      IsLeaf,
-		Children:    []*Node{},
-		Childrennum: num,
-		T:           T,
-		Idx:         idx,
-	}
-}
-
-func GetLen(node *Node) int {
+func GetLen(node *node.Node) int {
 	if node.IsLeaf {
 		return 1
 	} else {
