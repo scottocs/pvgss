@@ -73,8 +73,9 @@ func PVGSSShare(s *big.Int, AA *node.Node, PK []*bn128.G1) ([]*bn128.G1, *Prf, e
 	return C, prfs, nil
 }
 
+// 1.Invokes gssreconwithvrf
+// 2.Selects an authorized set to recover
 func PVGSSVerify(C []*bn128.G1, prfs *Prf, AA *node.Node, PK []*bn128.G1, RAA *node.Node, I []int) (bool, error) {
-	// gssShares := make([]*bn128.G1,len(C))
 	Q := make([]*big.Int, len(I))
 	for i := 0; i < len(I); i++ {
 		Q[i] = prfs.Shatarry[I[i]]
