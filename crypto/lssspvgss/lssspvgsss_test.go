@@ -8,6 +8,7 @@ import (
 	"pvgss/crypto/dleq"
 	"pvgss/crypto/lssspvgss/lsss"
 	"pvgss/crypto/lssspvgss/opmatrix"
+	"pvgss/crypto/node"
 	"testing"
 	"time"
 
@@ -26,12 +27,12 @@ func TestPVGSS(t *testing.T) {
 	for i := 0; i < num; i++ {
 		SK[i], PK1[i], PK2[i] = PVGSSSetup()
 	}
-	AA := &lsss.Node{
+	AA := &node.Node{
 		IsLeaf:      false,
 		Childrennum: 3,
 		T:           2,
 		Idx:         big.NewInt(0),
-		Children: []*lsss.Node{
+		Children: []*node.Node{
 			{IsLeaf: true, Idx: big.NewInt(1)}, // 叶子节点
 			{IsLeaf: true, Idx: big.NewInt(2)}, // 叶子节点
 			{
@@ -39,7 +40,7 @@ func TestPVGSS(t *testing.T) {
 				Childrennum: nx,
 				T:           tx,
 				Idx:         big.NewInt(3),
-				Children: []*lsss.Node{
+				Children: []*node.Node{
 					{IsLeaf: true, Idx: big.NewInt(1)},
 					{IsLeaf: true, Idx: big.NewInt(2)},
 					{IsLeaf: true, Idx: big.NewInt(3)},
@@ -183,8 +184,8 @@ func TestLSSSPVGSS(t *testing.T) {
 	A := lsss.NewNode(true, 0, 1, big.NewInt(int64(1)))
 	B := lsss.NewNode(true, 0, 1, big.NewInt(int64(2)))
 	X := lsss.NewNode(false, nx, tx, big.NewInt(int64(3)))
-	root.Children = []*lsss.Node{A, B, X}
-	Xp := make([]*lsss.Node, nx)
+	root.Children = []*node.Node{A, B, X}
+	Xp := make([]*node.Node, nx)
 	for i := 0; i < nx; i++ {
 		Xp[i] = lsss.NewNode(true, 0, 1, big.NewInt(int64(i+1)))
 	}

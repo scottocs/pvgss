@@ -38,7 +38,7 @@ func TestSSS(t *testing.T) {
 	}
 }
 
-func TestGrpsss(t *testing.T) {
+func TestGrpSSS(t *testing.T) {
 	// 1.Set the original secret value
 	s, _ := rand.Int(rand.Reader, bn128.Order)
 	S := new(bn128.G1).ScalarBaseMult(s)
@@ -60,13 +60,6 @@ func TestGrpsss(t *testing.T) {
 		I[i] = big.NewInt(int64(i + 1))
 	}
 
-	// 5.Calculate the Lagrange coefficients
-	// lambdas, err := PrecomputeLagrangeCoefficients(I)
-	// if err != nil {
-	// 	t.Fatalf("Error in PrecomputeLagrangeCoefficients: %v", err)
-	// }
-
-	// 6.Call GrpRecon to reconstruct
 	Secret, err := GrpRecon(shares[:threshold], I)
 	if err != nil {
 		t.Fatalf("Error in GrpRecon: %v", err)

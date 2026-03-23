@@ -24,20 +24,6 @@ func Share(s *big.Int, n, t int) ([]*big.Int, error) {
 }
 
 func Recon(Q []*big.Int, I []*big.Int, threshold int) (*big.Int, error) {
-
-	// // 1. RS Code Verifiy
-	// if len(Q) < threshold {
-	// 	return nil, fmt.Errorf("not enough shares: got %d, need %d", len(Q), threshold)
-	// }
-	// isValid := RSCodeVerify(Q, threshold)
-
-	// if !isValid {
-	// 	return nil, errors.New("RSCode verification failed: invalid shares detected")
-	// }
-
-	// fmt.Printf("RSCode Verification pass!!!\n")
-
-	//2.Reconstruct after pass the RSCode verification
 	lambdas, _ := PrecomputeLagrangeCoefficients(I)
 	secret := big.NewInt(0)
 	for i := 0; i < threshold; i++ {

@@ -109,6 +109,18 @@ func GrpGSSShare(Secret *bn128.G1, AA *node.Node) ([]*bn128.G1, error) {
 	return S, nil
 }
 
+// 辅助函数：计算子树叶子节点数
+func getLeafCount(n *node.Node) int {
+	if n.IsLeaf {
+		return 1
+	}
+	count := 0
+	for _, child := range n.Children {
+		count += getLeafCount(child)
+	}
+	return count
+}
+
 func GrpGSSRecon(AA *node.Node, Q []*bn128.G1) (*bn128.G1, *big.Int, error) {
 	if AA == nil {
 		return nil, nil, errors.New("AA is empty")
@@ -118,26 +130,35 @@ func GrpGSSRecon(AA *node.Node, Q []*bn128.G1) (*bn128.G1, *big.Int, error) {
 		if len(Q) == 0 {
 			return nil, nil, errors.New("insufficient shares for leaf node")
 		}
-		s := Q[0]
-		return s, AA.Idx, nil
+		return Q[0], AA.Idx, nil
 	}
 
-	childShares := make([]*bn128.G1, 0, AA.Childrennum)
-	childIdx := make([]*big.Int, 0, AA.Childrennum)
-	for i, child := range AA.Children[:AA.T] {
-		share, idx, err := GrpGSSRecon(child, Q[i:])
+	childShares := make([]*bn128.G1, 0, AA.T)
+	childIdx := make([]*big.Int, 0, AA.T)
+
+	currentOffset := 0
+	for i := 0; i < len(AA.Children) && len(childShares) < AA.T; i++ {
+		child := AA.Children[i]
+		need := getLeafCount(child)
+		if currentOffset+need > len(Q) {
+			return nil, nil, errors.New("insufficient shares in Q for child subtree")
+		}
+		subQ := Q[currentOffset : currentOffset+need]
+
+		share, idx, err := GrpGSSRecon(child, subQ)
 		if err != nil {
 			return nil, nil, err
 		}
+
 		childShares = append(childShares, share)
 		childIdx = append(childIdx, idx)
+		currentOffset += need
 	}
-
 	if len(childShares) < AA.T {
 		return nil, nil, errors.New("insufficient shares for non-leaf node")
 	}
 
-	recovered, err := sss.GrpRecon(childShares[:AA.T], childIdx[:AA.T]) // 传入下标数组
+	recovered, err := sss.GrpRecon(childShares[:AA.T], childIdx[:AA.T])
 	if err != nil {
 		return nil, nil, err
 	}
