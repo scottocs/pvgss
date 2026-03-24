@@ -112,7 +112,6 @@ func PVGSSVerify(C []*bn128.G1, prfs *Prf, root *node.Node, PK []*bn128.G1, AA *
 	//Transfer secret shares as shares matrix with 1 column
 	gsssharesMatrix := opmatrix.SetToMatrix(prfs.Shatarry)
 	resultSPMatrix, _ := opmatrix.MultiplyMatrix(verSPMatrix, gsssharesMatrix)
-	opmatrix.PrintMatrix(resultSPMatrix)
 	if !opmatrix.IsZeroMatrixMod(resultSPMatrix) {
 		fmt.Printf("No Pass Sparse Matrix Test!!!\n")
 		return false, nil

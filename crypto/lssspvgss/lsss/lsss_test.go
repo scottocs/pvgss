@@ -46,13 +46,10 @@ func TestLSSS(t *testing.T) {
 	//Test access policy 1
 	shares1, _ := Share(secret, root1)
 	lsssI1 := make([]int, tx+1)
-	recoverShares1 := make([]*big.Int, tx+1)
-	recoverShares1[0] = shares1[0]
 	for i := 1; i < tx+1; i++ {
 		lsssI1[i] = i + 1
-		recoverShares1[i] = shares1[lsssI1[i]]
 	}
-	reconS1, err := Recon(root1, recoverShares1, lsssI1)
+	reconS1, err := Recon(root1, shares1, lsssI1)
 	if err != nil {
 		t.Fatalf("LSSS Recon error: %v", err)
 	}
@@ -62,12 +59,9 @@ func TestLSSS(t *testing.T) {
 	//Test access policy 2
 	shares2, _ := Share(secret, root2)
 	lsssI2 := []int{0, 1, 3, 4}
-	recoverShares2 := make([]*big.Int, len(lsssI2))
-	for i := 0; i < len(lsssI2); i++ {
-		recoverShares2[i] = shares2[lsssI2[i]]
-	}
+
 	// Prepare the sub-matrix for reconstruction
-	reconS2, err := Recon(root2, recoverShares2, lsssI2)
+	reconS2, err := Recon(root2, shares2, lsssI2)
 	if err != nil {
 		t.Fatalf("LSSS Recon error: %v", err)
 	}

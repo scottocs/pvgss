@@ -34,7 +34,7 @@ func Share(s *big.Int, AA *node.Node) ([]*big.Int, error) {
 	return shares, nil
 }
 
-func Recon(AA *node.Node, recoverShares []*big.Int, I []int) (*big.Int, error) {
+func Recon(AA *node.Node, shares []*big.Int, I []int) (*big.Int, error) {
 	rows := len(I)
 	// Prepare the sub-matrix for reconstruction
 	matrix := Convert(AA)
@@ -64,10 +64,10 @@ func Recon(AA *node.Node, recoverShares []*big.Int, I []int) (*big.Int, error) {
 	w, _ := opmatrix.MultiplyMatrix(one, invRecMatrix)
 	shares2 := make([][]*big.Int, rows)
 	for i := 0; i < rows; i++ {
-		if recoverShares[i] == nil {
+		if shares[I[i]] == nil {
 			return nil, fmt.Errorf("share at index %d is nil", i)
 		}
-		shares2[i] = []*big.Int{recoverShares[i]}
+		shares2[i] = []*big.Int{shares[I[i]]}
 	}
 	reconS, _ := opmatrix.MultiplyMatrix(w, shares2)
 	s := reconS[0][0]

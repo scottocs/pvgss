@@ -7,7 +7,9 @@ import (
 	"math/big"
 	bn128 "pvgss/bn128"
 	"pvgss/crypto/dleq"
+	"pvgss/crypto/gssreconwithvrf"
 	"pvgss/crypto/lssspvgss/lsss"
+	"pvgss/crypto/lssspvgss/opmatrix"
 	"pvgss/crypto/node"
 )
 
@@ -72,7 +74,7 @@ func PVGSSShare(s *big.Int, AA *node.Node, PK []*bn128.G1) ([]*bn128.G1, *Prf, e
 }
 
 // Invokes gssreconwithvrf to check
-func PVGSSVerify(C []*bn128.G1, prfs *Prf, AA *node.Node, invmatrix1 [][]*big.Int, PK []*bn128.G1, I0, I1 []int) (bool, error) {
+func PVGSSVerify(C []*bn128.G1, prfs *Prf, root *node.Node, AA *node.Node, PK []*bn128.G1, I []int) (bool, error) {
 	for i := 0; i < len(C); i++ {
 		left := prfs.Cp[i]
 		temp1 := new(bn128.G1).ScalarMult(C[i], prfs.Xc)
@@ -82,25 +84,30 @@ func PVGSSVerify(C []*bn128.G1, prfs *Prf, AA *node.Node, invmatrix1 [][]*big.In
 			return false, fmt.Errorf("check nizk proof fails")
 		}
 	}
-	// Alice and Bob
-	// I0 := make([]int, len(invmatrix0))
-	// for i := 0; i < len(invmatrix0); i++ {
-	// 	I0[0] = i
-	// }
-	recoverShat, err := lsss.Recon(AA, prfs.Shatarry, I0)
-	if err != nil {
-		return false, fmt.Errorf("GSSRecon fails")
+	//Method 1:
+	// Restore the polynomial layer by layer from bottom to top
+	// Each polynomial is used to verify last n-t child nodes.
+	verLSSSRP, _ := gssreconwithvrf.ReconPolynomial(root, prfs.Shatarry)
+	if !verLSSSRP {
+		fmt.Printf("LSSS Shares No Pass ReconPolynomial Test!!!\n")
+		return false, nil
 	}
-	if prfs.Shat.Cmp(recoverShat) != 0 {
-		return false, fmt.Errorf("reconstruct shat dont match")
+	//Methed 3.2:Verify through parity-check matrix
+	//Calculate the parity-check matrix
+	matrix := lsss.Convert(root)
+	verPCMatrix := gssreconwithvrf.GenerateParityMatrix(matrix)
+	opmatrix.PrintMatrix(verPCMatrix)
+
+	//Transfer secret shares as shares matrix with 1 column
+	lssssharesMatrix := opmatrix.SetToMatrix(prfs.Shatarry)
+	//sharesMatrix[0][0] = big.NewInt(int64(8))
+	resultPCMatrix, _ := opmatrix.MultiplyMatrix(verPCMatrix, lssssharesMatrix)
+	if !opmatrix.IsZeroMatrixMod(resultPCMatrix) {
+		fmt.Printf("LSSS Shares No Pass Parity-Check Matrix Test\n")
+		return false, nil
 	}
-	// Alice and Watchers
-	// I1 := make([]int, len(invmatrix1))
-	// I1[0] = 0
-	// for i := 0; i < len(invmatrix1); i++ {
-	// 	I1[i+1] = i + 2
-	// }
-	recoverShat, err = lsss.Recon(AA, prfs.Shatarry, I1)
+
+	recoverShat, err := lsss.Recon(AA, prfs.Shatarry, I)
 	if err != nil {
 		return false, fmt.Errorf("GSSRecon fails")
 	}
