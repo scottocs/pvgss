@@ -178,6 +178,21 @@ func TestGSSReconWithVrf(t *testing.T) {
 	} else {
 		fmt.Printf("LSSS Shares No Pass ReconPolynomial Test!!!\n")
 	}
+	//Method 2:
+	// Excute RSCode Verification by layer from bottom to top
+	verLSSSRS, _ := ReconPolynomial(root, lsssshares)
+	if verLSSSRS {
+		fmt.Printf("LSSS Shares Pass RSCode Test!!!\n")
+		lsssI := []int{0, 1, 3, 4}
+		recoveredSecret, err := lsss.Recon(root, lsssshares, lsssI)
+		if err != nil {
+			t.Fatalf("Reconstruction failed: %v", err)
+		}
+		fmt.Println("orignal secret = ", secret)
+		fmt.Println("recover secret = ", recoveredSecret)
+	} else {
+		fmt.Printf("LSSS Shares No Pass RSCode Test!!!\n")
+	}
 
 	//Methed 3.2:Verify through parity-check matrix
 	//Calculate the parity-check matrix
