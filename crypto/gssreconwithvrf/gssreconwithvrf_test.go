@@ -141,6 +141,65 @@ func TestGSSReconWithVrf(t *testing.T) {
 		fmt.Printf("GSS Shares No Pass Sparse Matrix Test\n")
 	}
 
+	//Test
+	// 初始化根节点: (n=3, t=2) -> 需要3个子分支中的2个
+	testRoot := node.NewNode(false, 3, 2, big.NewInt(int64(0)))
+
+	// --- 分支 1: 4个叶子 (n=4, t=3) ---
+	branch1 := node.NewNode(false, 4, 3, big.NewInt(int64(1)))
+	leavesB1 := make([]*node.Node, 4)
+	for i := 0; i < 4; i++ {
+		// 叶子节点 ID: 1, 2, 3, 4
+		leavesB1[i] = node.NewNode(true, 0, 1, big.NewInt(int64(i+1)))
+	}
+	branch1.Children = leavesB1
+
+	// --- 分支 2: 5个叶子 (n=5, t=2) ---
+	branch2 := node.NewNode(false, 5, 2, big.NewInt(int64(2)))
+	leavesB2 := make([]*node.Node, 5)
+	for i := 0; i < 5; i++ {
+		// 叶子节点 ID: 5, 6, 7, 8, 9
+		leavesB2[i] = node.NewNode(true, 0, 1, big.NewInt(int64(i+5)))
+	}
+	branch2.Children = leavesB2
+
+	// --- 分支 3: 复合结构 (共6个叶子) ---
+	// 父节点 (n=2, t=2) -> 必须同时满足子节点A 和 子节点B
+	branch3Parent := node.NewNode(false, 2, 2, big.NewInt(int64(3)))
+
+	// 子节点 A: (n=3, t=2), 3个叶子
+	subBranch3A := node.NewNode(false, 3, 2, big.NewInt(int64(4)))
+	leavesB3A := make([]*node.Node, 3)
+	for i := 0; i < 3; i++ {
+		// 叶子节点 ID: 10, 11, 12
+		leavesB3A[i] = node.NewNode(true, 0, 1, big.NewInt(int64(i+10)))
+	}
+	subBranch3A.Children = leavesB3A
+
+	// 子节点 B: (n=3, t=3), 3个叶子
+	subBranch3B := node.NewNode(false, 3, 3, big.NewInt(int64(5)))
+	leavesB3B := make([]*node.Node, 3)
+	for i := 0; i < 3; i++ {
+		// 叶子节点 ID: 13, 14, 15
+		leavesB3B[i] = node.NewNode(true, 0, 1, big.NewInt(int64(i+13)))
+	}
+	subBranch3B.Children = leavesB3B
+
+	// 组装分支3
+	branch3Parent.Children = []*node.Node{subBranch3A, subBranch3B}
+
+	// --- 组装根节点 ---
+	testRoot.Children = []*node.Node{branch1, branch2, branch3Parent}
+	verSPMatrix, _ = GenerateSparseMatrix(root)
+	opmatrix.PrintMatrix(verSPMatrix)
+	//Transfer secret shares as shares matrix with 1 column
+	gsssharesMatrix = opmatrix.SetToMatrix(gssshares)
+	//gsssharesMatrix[0][0] = big.NewInt(int64(8))
+	resultSPMatrix, _ = opmatrix.MultiplyMatrix(verSPMatrix, gsssharesMatrix)
+	if opmatrix.IsZeroMatrixMod(resultSPMatrix) {
+		fmt.Printf("GSS Shares Pass Sparse Matrix Test\n")
+	}
+
 	// ==========================================
 	// Part 2: Test LSSS Scheme
 	// ==========================================

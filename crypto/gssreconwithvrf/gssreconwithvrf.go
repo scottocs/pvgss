@@ -339,12 +339,65 @@ func countLeaves(n *node.Node) int {
 	}
 	return sum
 }
+
+// getLagrangeCoefficientsAtZero: Compute the Lagrange coefficient vector lambda
+func getLagrangeCoefficientsAtZero(subTreeRoot *node.Node) ([]*big.Int, error) {
+	m := countLeaves(subTreeRoot)
+	if m == 0 {
+		return nil, fmt.Errorf("subtree has no leaves")
+	}
+
+	order := bn128.Order
+	lambdas := make([]*big.Int, m)
+
+	//X Point: 1, 2, ..., m
+	xs := make([]*big.Int, m)
+	for i := 0; i < m; i++ {
+		xs[i] = big.NewInt(int64(i + 1))
+	}
+
+	// Calculate the Lagrange coefficient at each position L_i(0)
+	for i := 0; i < m; i++ {
+		numerator := big.NewInt(1)
+		denominator := big.NewInt(1)
+
+		for j := 0; j < m; j++ {
+			if i == j {
+				continue
+			}
+			// Numerator: (0 - x_j)
+			termNum := new(big.Int).Neg(xs[j])
+			termNum.Mod(termNum, order)
+			numerator.Mul(numerator, termNum).Mod(numerator, order)
+
+			// Denominator: (x_i - x_j)
+			termDen := new(big.Int).Sub(xs[i], xs[j])
+			termDen.Mod(termDen, order)
+			denominator.Mul(denominator, termDen).Mod(denominator, order)
+		}
+
+		denInv := new(big.Int).ModInverse(denominator, order)
+		if denInv == nil {
+			return nil, fmt.Errorf("failed to compute modular inverse for Lagrange coefficient")
+		}
+
+		lam := new(big.Int).Mul(numerator, denInv)
+		lam.Mod(lam, order)
+		lambdas[i] = lam
+	}
+
+	return lambdas, nil
+}
 func buildMatrixRecursive(n *node.Node, currentOffset int, allRows *[][]*big.Int, totalCols int) (int, error) {
+	// If leaf node，occupies 1 column
 	if n.IsLeaf {
 		return 1, nil
 	}
+
+	// 1. Determine the starting position of the node in the global matrix
 	childOffsets := make([]int, len(n.Children))
 	currentChildOffset := currentOffset
+
 	for i, child := range n.Children {
 		consumed, err := buildMatrixRecursive(child, currentChildOffset, allRows, totalCols)
 		if err != nil {
@@ -353,39 +406,57 @@ func buildMatrixRecursive(n *node.Node, currentOffset int, allRows *[][]*big.Int
 		childOffsets[i] = currentChildOffset
 		currentChildOffset += consumed
 	}
+
 	nCount := len(n.Children)
 	tThreshold := n.T
 
-	//  Only the number of points n > the threshold t, existing constraints.
+	// If n <= t, there are no redundant constraints.
 	if nCount <= tThreshold {
 		return currentChildOffset - currentOffset, nil
 	}
 
-	// Construct the Vandermonde matrix and find its null space.
-	// Input: n , t
-	// Output: (n-t) basic vector which length is n
+	// 2. Calculate the Null Space basis vectors of the current layer.
+	//  sum(v[i] * S_child[i]) = 0
 	nullSpaceBasis, err := computeVandermondeNullSpace(nCount, tThreshold)
 	if err != nil {
 		return 0, err
 	}
+
+	// 3. Transfer local constraints into global leaf constraints
 	for _, vector := range nullSpaceBasis {
 		row := make([]*big.Int, totalCols)
 		for i := 0; i < totalCols; i++ {
 			row[i] = big.NewInt(0)
 		}
-
-		// Map local null space vectors to global column indices
 		for i, coeff := range vector {
 			if coeff.Sign() == 0 {
 				continue
 			}
-			globalIdx := currentOffset + i
-			row[globalIdx] = new(big.Int).Set(coeff)
-		}
 
+			child := n.Children[i]
+			startIdx := childOffsets[i]
+
+			if child.IsLeaf {
+				row[startIdx] = new(big.Int).Set(coeff)
+			} else {
+				lambdas, err := getLagrangeCoefficientsAtZero(child)
+				if err != nil {
+					return 0, err
+				}
+				for k, lam := range lambdas {
+					globalIdx := startIdx + k
+					if globalIdx >= totalCols {
+						return 0, fmt.Errorf("index out of bounds: %d >= %d", globalIdx, totalCols)
+					}
+					term := new(big.Int).Mul(coeff, lam)
+					term.Mod(term, bn128.Order)
+					row[globalIdx].Add(row[globalIdx], term)
+					row[globalIdx].Mod(row[globalIdx], bn128.Order)
+				}
+			}
+		}
 		*allRows = append(*allRows, row)
 	}
-
 	return currentChildOffset - currentOffset, nil
 }
 

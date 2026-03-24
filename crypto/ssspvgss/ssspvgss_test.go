@@ -16,20 +16,10 @@ import (
 
 func TestSSSPVGSS(t *testing.T) {
 
+	//Acceess policy
 	nx := 10       //the number of Watchers
 	tx := nx/2 + 1 //the threshold of Watchers
 	num := nx + 2  //the number of leaf nodes
-
-	// 1. Setup
-	SK := make([]*big.Int, num)
-	PK1 := make([]*bn128.G1, num)
-	PK2 := make([]*bn128.G2, num)
-	for i := 0; i < num; i++ {
-		SK[i], PK1[i], PK2[i] = PVGSSSetup()
-	}
-
-	// 2. Share
-	//2.1 Construct acceess policy
 	root := node.NewNode(false, 3, 2, big.NewInt(int64(0)))
 	A := node.NewNode(true, 0, 1, big.NewInt(int64(1)))
 	B := node.NewNode(true, 0, 1, big.NewInt(int64(2)))
@@ -40,19 +30,48 @@ func TestSSSPVGSS(t *testing.T) {
 		Xp[i] = node.NewNode(true, 0, 1, big.NewInt(int64(i+1)))
 	}
 	X.Children = Xp
+
+	//Authorized Set
+	//1) Alice and Bob
+	path1 := node.NewNode(false, 2, 2, big.NewInt(int64(0)))
+	path1.Children = []*node.Node{A, B}
+	I1 := []int{0, 1}
+	//2) Alice and Watchers
+	path2 := node.NewNode(false, 2, 2, big.NewInt(int64(0)))
+	reconX := node.NewNode(false, tx, tx, big.NewInt(int64(3)))
+	path2.Children = []*node.Node{A, reconX}
+	reconXp := make([]*node.Node, tx)
+	for i := 0; i < tx; i++ {
+		reconXp[i] = node.NewNode(true, 0, 1, big.NewInt(int64(i+1)))
+	}
+	reconX.Children = reconXp
+	//3) Bob and Watchers
+	path3 := node.NewNode(false, 2, 2, big.NewInt(int64(0)))
+	path3.Children = []*node.Node{B, reconX}
+
+	// 1. Setup
+	SK := make([]*big.Int, num)
+	PK1 := make([]*bn128.G1, num)
+	PK2 := make([]*bn128.G2, num)
+	for i := 0; i < num; i++ {
+		SK[i], PK1[i], PK2[i] = PVGSSSetup()
+	}
+
+	// 2. Share
+
 	//2.2 Generates PVGSS shares
 	s, _ := rand.Int(rand.Reader, bn128.Order)
-	C, _, err := PVGSSShare(s, root, PK1)
+	C, prfs, err := PVGSSShare(s, root, PK1)
 	if err != nil {
 		t.Fatalf("pvgss failed to share: %v\n", err)
 	}
 
-	// 3. Verify all PVGSS shares via gssreconwithvrf
-	// isShareValid, err := PVGSSVerify(C, prfs, root, PK1, root, I)
-	// if err != nil || isShareValid == false {
-	// 	t.Fatalf("pvgss share verify failed: %v\n", err)
-	// }
-	// fmt.Println("isShareValid : ", isShareValid)
+	//3. Verify all PVGSS shares via gssreconwithvrf
+	isShareValid, err := PVGSSVerify(C, prfs, root, PK1, path1, I1)
+	if err != nil || isShareValid == false {
+		t.Fatalf("pvgss share verify failed: %v\n", err)
+	}
+	fmt.Println("isShareValid : ", isShareValid)
 
 	// 4.PreRecon
 	decShares := make([]*bn128.G1, num)
@@ -77,8 +96,7 @@ func TestSSSPVGSS(t *testing.T) {
 	// 6.Recon
 	onrgnS := new(bn128.G1).ScalarBaseMult(s)
 	// A and B
-	path1 := node.NewNode(false, 2, 2, big.NewInt(int64(0)))
-	path1.Children = []*node.Node{A, B} //(Alice,Bob)
+
 	Q1 := make([]*bn128.G1, 2)
 	Q1[0] = decShares[0] //A's share
 	Q1[1] = decShares[1] //B's share
@@ -89,14 +107,6 @@ func TestSSSPVGSS(t *testing.T) {
 	}
 
 	// A and Watchers
-	path2 := node.NewNode(false, 2, 2, big.NewInt(int64(0)))
-	reconX := node.NewNode(false, tx, tx, big.NewInt(int64(3)))
-	path2.Children = []*node.Node{A, reconX} //(Alice,Watchers)
-	reconXp := make([]*node.Node, tx)
-	for i := 0; i < tx; i++ {
-		reconXp[i] = node.NewNode(true, 0, 1, big.NewInt(int64(i+1)))
-	}
-	reconX.Children = reconXp
 	Q2 := make([]*bn128.G1, 1+tx)
 	Q2[0] = decShares[0] //Alice's share
 	for i := 1; i < tx+1; i++ {
@@ -110,8 +120,6 @@ func TestSSSPVGSS(t *testing.T) {
 	}
 
 	// B and Watchers
-	path3 := node.NewNode(false, 2, 2, big.NewInt(int64(0)))
-	path3.Children = []*node.Node{B, reconX} //(Bob,Watchers)
 	Q3 := make([]*bn128.G1, 1+tx)
 	Q3[0] = decShares[1] //Bob's share
 	for i := 1; i < tx+1; i++ {

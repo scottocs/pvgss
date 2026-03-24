@@ -9,6 +9,8 @@ import (
 	"math/big"
 	bn128 "pvgss/bn128"
 	"pvgss/crypto/dleq"
+	"pvgss/crypto/gssreconwithvrf"
+	"pvgss/crypto/lssspvgss/opmatrix"
 	"pvgss/crypto/node"
 	gss "pvgss/crypto/ssspvgss/gss"
 )
@@ -75,11 +77,8 @@ func PVGSSShare(s *big.Int, AA *node.Node, PK []*bn128.G1) ([]*bn128.G1, *Prf, e
 
 // 1.Invokes gssreconwithvrf
 // 2.Selects an authorized set to recover
-func PVGSSVerify(C []*bn128.G1, prfs *Prf, AA *node.Node, PK []*bn128.G1, RAA *node.Node, I []int) (bool, error) {
-	Q := make([]*big.Int, len(I))
-	for i := 0; i < len(I); i++ {
-		Q[i] = prfs.Shatarry[I[i]]
-	}
+func PVGSSVerify(C []*bn128.G1, prfs *Prf, root *node.Node, PK []*bn128.G1, AA *node.Node, I []int) (bool, error) {
+
 	for i := 0; i < len(C); i++ {
 		left := prfs.Cp[i]
 		temp1 := new(bn128.G1).ScalarMult(C[i], prfs.Xc)
@@ -89,7 +88,42 @@ func PVGSSVerify(C []*bn128.G1, prfs *Prf, AA *node.Node, PK []*bn128.G1, RAA *n
 			return false, fmt.Errorf("check nizk proof fails")
 		}
 	}
-	recoverShat, _, err := gss.GSSRecon(RAA, Q)
+	//Firstly, Check if the share comes from the claimed access structure.
+	//Method 1:
+	// Restore the polynomial layer by layer from bottom to top
+	// Each polynomial is used to verify last n-t child nodes.
+	verGSSRP, _ := gssreconwithvrf.ReconPolynomial(root, prfs.Shatarry)
+	if !verGSSRP {
+		fmt.Printf("No Pass ReconPolynomial Test!!!\n")
+		return false, nil
+	}
+	//Method 2:
+	// Excute RSCode Verification by layer from bottom to top
+	verGSSRS, _ := gssreconwithvrf.ReconPolynomial(root, prfs.Shatarry)
+	if !verGSSRS {
+		fmt.Printf("No Pass RSCode Test!!!\n")
+		return false, nil
+	}
+	//Method 3.1:
+	//Generate a global sparse parity check matrix H through recursively process each non-leaf node
+	//Calculate the sparse matrix
+	verSPMatrix, _ := gssreconwithvrf.GenerateSparseMatrix(root)
+	//opmatrix.PrintMatrix(verSPMatrix)
+	//Transfer secret shares as shares matrix with 1 column
+	gsssharesMatrix := opmatrix.SetToMatrix(prfs.Shatarry)
+	resultSPMatrix, _ := opmatrix.MultiplyMatrix(verSPMatrix, gsssharesMatrix)
+	opmatrix.PrintMatrix(resultSPMatrix)
+	if !opmatrix.IsZeroMatrixMod(resultSPMatrix) {
+		fmt.Printf("No Pass Sparse Matrix Test!!!\n")
+		return false, nil
+	}
+
+	//Secondly, an authorized set is used to recover
+	Q := make([]*big.Int, len(I))
+	for i := 0; i < len(I); i++ {
+		Q[i] = prfs.Shatarry[I[i]]
+	}
+	recoverShat, _, err := gss.GSSRecon(AA, Q)
 	if err != nil {
 		return false, fmt.Errorf("GSSRecon fails")
 	}
