@@ -148,6 +148,8 @@ func TestGSSReconWithVrf(t *testing.T) {
 	//Calculate lsss shares
 	lsssshares, _ := lsss.Share(secret, root)
 	//Method 1:
+	// Restore the polynomial layer by layer from bottom to top
+	// Each polynomial is used to verify last n-t child nodes.
 	verLSSSRP, _ := ReconPolynomial(root, lsssshares)
 	if verLSSSRP {
 		fmt.Printf("LSSS Shares Pass ReconPolynomial Test!!!\n")
@@ -167,7 +169,7 @@ func TestGSSReconWithVrf(t *testing.T) {
 		P_1.Children = []*node.Node{P_A, P_B}
 		P_E := node.NewNode(true, 0, 1, big.NewInt(int64(1)))
 		P_2.Children = []*node.Node{P_E}
-		recoveredSecret, _ := lsss.Recon(root, Q, I)
+		recoveredSecret, _ := lsss.Recon(root, lsssshares, I)
 		if err != nil {
 			t.Fatalf("Reconstruction failed: %v", err)
 		}
@@ -189,8 +191,8 @@ func TestGSSReconWithVrf(t *testing.T) {
 	if opmatrix.IsZeroMatrixMod(resultPCMatrix) {
 		fmt.Printf("LSSS Shares Pass Parity-Check Matrix Test\n")
 		lsssI := []int{0, 1, 3, 4}
-		recoverLSSSShares := []*big.Int{lsssshares[0], lsssshares[1], lsssshares[3], lsssshares[4]}
-		reconS, err := lsss.Recon(root, recoverLSSSShares, lsssI)
+		//recoverLSSSShares := []*big.Int{lsssshares[0], lsssshares[1], lsssshares[3], lsssshares[4]}
+		reconS, err := lsss.Recon(root, lsssshares, lsssI)
 		if err != nil {
 			t.Fatalf("LSSS Recon error: %v", err)
 		}
