@@ -166,6 +166,9 @@ contract Dex
         uint256 T; //Threshold
         uint256 Idx; //The local index of the node under its parent
     }
+    mapping(uint256 => Node) public nodes;
+    uint256[] public XChildId;
+    uint256[] public rootChildId;
 
     struct Prf {
         G1Point[] Cp;
@@ -177,9 +180,7 @@ contract Dex
     bool[] VerifyResult;
     bool[] KeyVerifyResult;
 
-    mapping(uint256 => Node) public nodes;
-    uint256[] public XChildId;
-    uint256[] public rootChildId;
+
 
     // ===== Node =====
     function CreatePath(uint256 n, uint256 t, uint256 flag) public payable {
@@ -193,8 +194,11 @@ contract Dex
         createNode(0, 3, false, n, t);
         XChildId = new uint256[](n);
         for(uint256 i = 0; i < n; i++) {
-            XChildId[i] = i+1;
-            createNode(3, i+1, true, 0, 1);
+            // XChildId[i] = i+1;
+            // createNode(3, i+1, true, 0, 1);
+            uint256 childLocalIdx = i + 10;  // 使用更大的范围避免冲突
+            XChildId[i] = childLocalIdx;     // 存储本地索引
+            createNode(3, childLocalIdx, true, 0, 1);
         }
         // add child nodes for X
         addChild(3, XChildId);
@@ -248,17 +252,271 @@ contract Dex
         }
     }
 
-    // function getChildren(uint256 nodeId) public view returns (uint256[] memory) {
-    //     return nodes[nodeId].Children;
-    // }
+    //======================================GssReconWithVrf================================//
+    //===========Method 1============
+   function ReconPolynomial(uint256 rootNodeId, uint256[] memory shares) public view returns (bool success) {
+        Node memory AA = nodes[rootNodeId];
+        if (AA.Children.length == 0 && !AA.IsLeaf) {
+            return false;
+        }
+        (, , bool verifySuccess) = verifyRecursiveRP(AA, shares, 0);
+        if (!verifySuccess) {
+            return false;
+        }
+        return true;
+    }
 
-    // function getNodeData(uint256 nodeId) public view returns (bool, uint256, uint256, uint256) {
-    //     Node storage node = nodes[nodeId];
-    //     return (node.IsLeaf,node.Childrennum,node.T,node.Idx);
-    // }
+    function verifyRecursiveRP(Node memory AA, uint256[] memory shares, uint256 offset) 
+        public view returns (uint256 consumed, uint256 secret, bool success) {
+        
+        if (AA.IsLeaf) {
+            if (offset >= shares.length) {
+                return (0, 0, false);
+            }
+            secret = shares[offset];
+            return (1, secret, true);
+        }
 
+        uint256[] memory childSecrets = new uint256[](AA.Childrennum);
+        uint256 currentOffset = offset;
+        
+        for(uint256 i = 0; i < AA.Childrennum; i++) {
+            if (i >= AA.Children.length) {
+                return (0, 0, false);
+            }
+            uint256 childNodeId = AA.Children[i];
+            Node memory child = nodes[childNodeId];
+            (uint256 childConsumed, uint256 childSecret, bool childSuccess) = verifyRecursiveRP(child, shares, currentOffset);
+            if (!childSuccess) {
+                return (0, 0, false);
+            }
+            childSecrets[i] = childSecret;
+            currentOffset += childConsumed;
+        }
+        
+        if (childSecrets.length < AA.T) {
+            return (0, 0, false);
+        }
+        
+        uint256[] memory sharesVal = new uint256[](AA.T);
+        for(uint256 i = 0; i < AA.T; i++) {
+            sharesVal[i] = childSecrets[i];
+        }
+
+        uint256[] memory coefficients = reconCoefficient(sharesVal);
+
+        for(uint256 i = AA.T; i < childSecrets.length; i++) {
+            uint256 expectedVal = childSecrets[i];
+            uint256 xVal = i + 1;
+
+            uint256 calculatedVal = evaluatePolynomial(xVal, coefficients);
+
+            if (expectedVal != calculatedVal) {
+                return (0, 0, false);
+            }
+        }
+        
+        secret = coefficients[0];
+        consumed = currentOffset - offset;
+        return (consumed, secret, true);
+    }
+
+
+    function reconCoefficient(uint256[] memory sharesVals) 
+        public view returns (uint256[] memory coefficients) {
+            uint256 t = sharesVals.length;
+            require(t > 0, "No shares provided");
+            //V[i][j] = (i+1)^j mod p
+            uint256[][] memory vandermondeMatrix = new uint256[][](t);
+            for(uint256 i = 0; i < t; i++) {
+                vandermondeMatrix[i] = new uint256[](t);
+                uint256 xPower = 1;
+                for(uint256 j = 0; j < t; j++) {
+                    vandermondeMatrix[i][j] = xPower;
+                    xPower = mulmod(xPower, i + 1, GEN_ORDER);
+                }
+            }
+            uint256[][] memory vandermondeInverse = GaussJordanInverse(vandermondeMatrix);
+            //Compute coefficient vector: coeff = V^(-1) * shares
+            coefficients = new uint256[](t);
+            for(uint256 i = 0; i < t; i++) {
+                uint256 sum = 0;
+                for(uint256 j = 0; j < t; j++) {
+                    sum = addmod(sum, mulmod(vandermondeInverse[i][j], sharesVals[j], GEN_ORDER), GEN_ORDER);
+                }
+                coefficients[i] = sum;
+            }
+            return coefficients;
+        }
+
+    //===========Method 2============
+
+    function RecurRSCode(uint256 nodeId, uint256[] memory shares) 
+        public view returns (bool success) {
+            
+        if (shares.length == 0) {
+            return false;
+        }
+
+        // 启动递归验证
+        (uint256 _consumed, uint256 _secret, bool verifySuccess) = verifyRecursiveRS(nodeId, shares, 0);
+
+        return verifySuccess;
+    }
+
+    function verifyRecursiveRS(uint256 nodeId, uint256[] memory shares, uint256 offset) 
+        internal view returns (uint256 consumed, uint256 secret, bool success) {
+        
+        Node memory node = nodes[nodeId];
+        
+        // 1. 叶子节点处理
+        if (node.IsLeaf) {
+            if (offset >= shares.length) {
+                return (0, 0, false); // Insufficient shares
+            }
+            secret = shares[offset];
+            return (1, secret, true);
+        }
+
+        // 2. 非叶子节点：递归收集子节点的秘密值
+        uint256[] memory childSecrets = new uint256[](node.Childrennum);
+        uint256 currentOffset = offset;
+
+        for (uint256 i = 0; i < node.Childrennum; i++) {
+            if (i >= node.Children.length) {
+                return (0, 0, false); // Children count mismatch
+            }
+            
+            uint256 childNodeId = node.Children[i];
+            
+            uint256 childConsumed;
+            uint256 childSecret;
+            bool childSuccess;
+
+            (childConsumed, childSecret, childSuccess) = verifyRecursiveRS(childNodeId, shares, currentOffset);
+            if (!childSuccess) {
+                return (0, 0, false);
+            }
+            
+            childSecrets[i] = childSecret;
+            currentOffset += childConsumed;
+        }
+        
+        // 3. 获取子秘密数量并检查阈值
+        uint256 n = node.Childrennum; // number of child secrets
+        uint256 k = node.T;          // threshold
+        
+        if (n < k) {
+            return (0, 0, false); // Insufficient child secrets
+        }
+
+        // 4. 调用 rscodeVerify 算法检查所有子份额是否有效
+        if (!rscodeVerify(childSecrets, k)) {
+            return (0, 0, false); // RS Code verification failed
+        }
+
+        // 5. 验证成功后，重构当前节点的秘密（使用前 k 个点）
+        // 创建用于重构的份额数组
+        uint256[] memory sharesForRecon = new uint256[](k);
+        for (uint256 i = 0; i < k; i++) {
+            sharesForRecon[i] = childSecrets[i];
+        }
+        
+        // 重构多项式系数
+        uint256[] memory coefficients;
+        try this.reconCoefficient(sharesForRecon) returns (uint256[] memory coeffs) {
+            coefficients = coeffs;
+        } catch {
+            return (0, 0, false); // Reconstruction failed
+        }
+        
+        secret = coefficients[0]; // 常数项是秘密值
+        consumed = currentOffset - offset;
+        success = true;
+        
+        return (consumed, secret, success);
+    }
+    
+
+    function rscodeVerify(uint256[] memory shares, uint256 k) 
+        internal view returns (bool) {
+            uint256 n = shares.length;
+
+            if (n == k) {
+                return true; 
+            }
+            if (n < k) {
+                return false;
+            }
+            uint256 seed = uint256(keccak256(abi.encodePacked(shares[0], n, k)));
+
+            uint256 degF = n - k - 1;
+            uint256[] memory fCoeffs = new uint256[](degF + 1);
+
+            for (uint256 i = 0; i <= degF; i++) {
+                fCoeffs[i] = uint256(keccak256(abi.encodePacked(seed, i))) % GEN_ORDER;
+            }
+
+            uint256[] memory cPerp = new uint256[](n);
+
+            for (uint256 i = 0; i < n; i++) {
+                uint256 x_i = i + 1;
+                uint256 denom = 1;
+                for (uint256 j = 0; j < n; j++) {
+                    if (i == j) continue;
+                    uint256 x_j = j + 1;
+                    uint256 diff = submod2(x_j, x_i, GEN_ORDER); // (x_j - x_i) mod p
+                    denom = mulmod(denom, diff, GEN_ORDER);
+                }
+
+                uint256 v_i = _modInv(denom, GEN_ORDER);
+                uint256 fVal = evaluatePolynomial(x_i, fCoeffs); 
+                cPerp[i] = mulmod(v_i, fVal, GEN_ORDER);
+            }
+            uint256 innerProduct = 0;
+            for (uint256 i = 0; i < n; i++) {
+                if (cPerp[i] == 0) continue;
+                uint256 term = mulmod(shares[i], cPerp[i], GEN_ORDER);
+                innerProduct = addmod(innerProduct, term, GEN_ORDER);
+            }
+
+            return innerProduct == 0;
+    }
+
+    function interpolate(uint256[] memory points) 
+        internal view returns (uint256 secret) {
+            uint k = points.length;
+            require(k > 0, "no points provided");
+            secret = 0;
+
+            for (uint i = 0; i < k; i++) {
+                uint x_i = i + 1;
+                uint num = 1;
+                uint den = 1;
+
+                for (uint j = 0; j < k; j++) {
+                    if (i == j) continue;
+                    uint x_j = j + 1;
+                    num = mulmod(num, GEN_ORDER - x_j, GEN_ORDER);
+                    uint diff;
+                    if (x_i > x_j) {
+                        diff = x_i - x_j;
+                    } else {
+                        diff = x_i + GEN_ORDER - x_j;
+                    }
+                    den = mulmod(den, diff, GEN_ORDER);
+                }   
+
+                uint denInv = _modInv(den, GEN_ORDER);
+                uint coeff = mulmod(num, denInv, GEN_ORDER);
+
+                uint term = mulmod(points[i], coeff, GEN_ORDER);
+                secret = addmod(secret, term, GEN_ORDER);
+            }
+            return secret;
+    }
     // ===== SSS and GSS =====
-    function evaluatePolynomial(uint256 x,uint256[] memory coefficients) internal returns (uint256) {
+    function evaluatePolynomial(uint256 x,uint256[] memory coefficients) internal pure returns (uint256) {
         uint256 result = coefficients[0]; 
         uint256 xPower = x;
         for (uint256 i = 1; i < coefficients.length; i++) {
@@ -341,6 +599,7 @@ contract Dex
 
     // ===== PVGSS-SSS Verification =====
     function PVGSSVerify(G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray,G1Point[] memory C,G1Point[] memory PK, uint256[] memory I) public payable returns (bool) {
+        
         Prf memory prf ;
         prf.Cp = new G1Point[](shatArray.length);
         prf.ShatArray = new uint256[](shatArray.length);
@@ -412,10 +671,22 @@ contract Dex
 
     // ========================== PVGSS-LSSS Verification ===============================
 
-     bool[] LSSSVerifyResult;
-     // Prf Lprf;
-     // uint256[][] public Matrix;
-     function LSSSPVGSSVerify(G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray,G1Point[] memory C,G1Point[] memory PK, uint256[][] memory invmatrix, uint256[][] memory invmatrix1 ,uint256[] memory I, uint256[] memory I1) public payable returns (bool) {
+    bool[]  LSSSVerifyResult;
+
+
+    function GetLSSSVerifyResult() public view returns (bool[] memory) {
+        return LSSSVerifyResult;
+    }
+
+    function LSSSPVGSSVerify(G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray,G1Point[] memory C,G1Point[] memory PK, uint256[][] memory invmatrix, uint256[][] memory invmatrix1 ,uint256[] memory I, uint256[] memory I1) public payable returns (bool) {
+        if (!RecurRSCode(0, shatArray)){
+            LSSSVerifyResult.push(false);
+            return false;           
+        }       
+        if (!ReconPolynomial(0, shatArray)){
+            LSSSVerifyResult.push(false);
+            return false;           
+        }
          Prf memory Lprf ;
          Lprf.Cp = new G1Point[](shatArray.length);
          Lprf.ShatArray = new uint256[](shatArray.length);
@@ -446,9 +717,7 @@ contract Dex
          LSSSVerifyResult.push(true);
          return true;
      }
-     function GetLSSSVerifyResult() public view returns (bool[] memory) {
-         return LSSSVerifyResult;
-     }
+
      // LSSSRecon
      // change matrix to invRecMatrix
      function LSSSRecon(uint256[][] memory invRecMatrix, uint256[] memory shares, uint256[] memory I) public view returns (uint256) {
@@ -497,6 +766,7 @@ contract Dex
          }
          return C;
      }
+
      function GaussJordanInverse(uint256[][] memory A) internal view returns (uint256[][] memory) {
          uint256 n = A.length;
          // creat [A | I]
@@ -546,7 +816,8 @@ contract Dex
          }
          return inverse;
      }
-    // //========================== PVGSS-LSSS Verification End ===============================
+
+    //========================== PVGSS-LSSS Verification End ===============================
 
     
     // store contract balance   users A token B balance: balances[userA addr][tokenB addr]

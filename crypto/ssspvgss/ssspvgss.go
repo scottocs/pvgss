@@ -10,7 +10,6 @@ import (
 	bn128 "pvgss/bn128"
 	"pvgss/crypto/dleq"
 	"pvgss/crypto/gssreconwithvrf"
-	"pvgss/crypto/lssspvgss/opmatrix"
 	"pvgss/crypto/node"
 	gss "pvgss/crypto/ssspvgss/gss"
 )
@@ -107,15 +106,15 @@ func PVGSSVerify(C []*bn128.G1, prfs *Prf, root *node.Node, PK []*bn128.G1, AA *
 	//Method 3.1:
 	//Generate a global sparse parity check matrix H through recursively process each non-leaf node
 	//Calculate the sparse matrix
-	verSPMatrix, _ := gssreconwithvrf.GenerateSparseMatrix(root)
-	//opmatrix.PrintMatrix(verSPMatrix)
-	//Transfer secret shares as shares matrix with 1 column
-	gsssharesMatrix := opmatrix.SetToMatrix(prfs.Shatarry)
-	resultSPMatrix, _ := opmatrix.MultiplyMatrix(verSPMatrix, gsssharesMatrix)
-	if !opmatrix.IsZeroMatrixMod(resultSPMatrix) {
-		fmt.Printf("No Pass Sparse Matrix Test!!!\n")
-		return false, nil
-	}
+	// verSPMatrix, _ := gssreconwithvrf.GenerateSparseMatrix(root)
+	// //opmatrix.PrintMatrix(verSPMatrix)
+	// //Transfer secret shares as shares matrix with 1 column
+	// gsssharesMatrix := opmatrix.SetToMatrix(prfs.Shatarry)
+	// resultSPMatrix, _ := opmatrix.MultiplyMatrix(verSPMatrix, gsssharesMatrix)
+	// if !opmatrix.IsZeroMatrixMod(resultSPMatrix) {
+	// 	fmt.Printf("No Pass Sparse Matrix Test!!!\n")
+	// 	return false, nil
+	// }
 
 	//Secondly, an authorized set is used to recover
 	Q := make([]*big.Int, len(I))

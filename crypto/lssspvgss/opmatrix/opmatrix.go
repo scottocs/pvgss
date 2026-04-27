@@ -80,6 +80,35 @@ func IsZeroMatrixMod(matrix [][]*big.Int) bool {
 	return true
 }
 
+func EqualMatrix(A, B [][]*big.Int) bool {
+	if len(A) != len(B) {
+		return false
+	}
+	for i := 0; i < len(A); i++ {
+		rowA := A[i]
+		rowB := B[i]
+		if len(rowA) != len(rowB) {
+			return false
+		}
+		for j := 0; j < len(rowA); j++ {
+			valA := rowA[j]
+			valB := rowB[j]
+			if valA == nil && valB == nil {
+				continue
+			}
+			if valA == nil || valB == nil {
+				return false
+			}
+			if valA.Cmp(valB) != 0 {
+				fmt.Printf("%d row %d column is not equal!\n", i, j)
+				return false
+			}
+		}
+	}
+
+	return true
+}
+
 func PrintMatrix(matrix [][]*big.Int) {
 	for _, row := range matrix {
 		for _, val := range row {

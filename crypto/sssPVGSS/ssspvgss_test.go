@@ -58,8 +58,6 @@ func TestSSSPVGSS(t *testing.T) {
 	}
 
 	// 2. Share
-
-	//2.2 Generates PVGSS shares
 	s, _ := rand.Int(rand.Reader, bn128.Order)
 	C, prfs, err := PVGSSShare(s, root, PK1)
 	if err != nil {
