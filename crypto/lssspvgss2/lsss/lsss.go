@@ -151,14 +151,14 @@ func ExtractFirstThreshold(root *node.Node) (*node.Node, []*node.Node, int, int)
 
 	// The first non-leaf node is processed and its threshold structure is extracted
 	t := root.T
-	n := root.Childrennum
+	n := root.ChildrenNum
 	children := root.Children
 
 	// Returns the threshold structure of the current node, as well as its children
 	return &node.Node{
 		IsLeaf:      false,
 		Children:    nil,
-		Childrennum: n,
+		ChildrenNum: n,
 		T:           t,
 		Idx:         root.Idx,
 	}, children, t, n
@@ -212,7 +212,7 @@ func Convert(F_A *node.Node) [][]*big.Int {
 			}
 			L = make([]*node.Node, m1+m2-1)
 
-			// Updata M and L
+			// Update M and L
 			for u := 0; u < z-1; u++ {
 				L[u] = L1[u]
 				for v := 0; v < d1; v++ {

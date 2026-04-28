@@ -46,7 +46,7 @@ func TestDexGasLSSS(t *testing.T) {
 		utils.GetENV("PRIVATE_KEY_9"),
 		utils.GetENV("PRIVATE_KEY_10"),
 	}
-	accountNum := 20
+	accountNum := 10
 
 	allSK := make([]*big.Int, accountNum)
 	allPK1 := make([]*bn128.G1, accountNum)

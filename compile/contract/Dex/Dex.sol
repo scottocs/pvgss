@@ -35,13 +35,6 @@ contract Dex
 	}
 
     G1Point G1 = G1Point(1, 2);
-    G2Point G2 = G2Point(
-        [11559732032986387107991004021392285783925812861821192530917403151452391805634,
-        10857046999023057135944570762232829481370756359578518086990519993285655852781],
-        [4082367875863433681332203403145435568316851327593401208105741076214120093531,
-        8495653923123431417604973247489272438418190587263600148770280649306958101930]
-    );
-
 	/// return the sum of two points of G1
 	function g1add(G1Point memory p1, G1Point memory p2) view internal returns (G1Point memory r) {
 		uint[4] memory input;
@@ -51,9 +44,22 @@ contract Dex
 		input[3] = p2.Y;
 		bool success;
 		assembly {
-			success := staticcall(sub(gas(), 2000), 6, input, 0xc0, r, 0x60)
+			success := staticcall(sub(gas(), 2000), 6, input, 0x80, r, 0x40)
 			// Use "invalid" to make gas estimation work
 			//switch success case 0 { invalid }
+		}
+		require(success);
+	}
+
+	function g1addCalldata(G1Point calldata p1, G1Point memory p2) view internal returns (G1Point memory r) {
+		uint[4] memory input;
+		input[0] = p1.X;
+		input[1] = p1.Y;
+		input[2] = p2.X;
+		input[3] = p2.Y;
+		bool success;
+		assembly {
+			success := staticcall(sub(gas(), 2000), 6, input, 0x80, r, 0x40)
 		}
 		require(success);
 	}
@@ -67,62 +73,38 @@ contract Dex
 		input[2] = s;
 		bool success;
 		assembly {
-			success := staticcall(sub(gas(), 2000), 7, input, 0x80, r, 0x60)
+			success := staticcall(sub(gas(), 2000), 7, input, 0x60, r, 0x40)
 			// Use "invalid" to make gas estimation work
 			//switch success case 0 { invalid }
 		}
 		require (success);
 	}
 
-	/// return the result of computing the pairing check
-	/// e(p1[0], p2[0]) *  .... * e(p1[n], p2[n]) == 1
-	/// For example pairing([P1(), P1().negate()], [P2(), P2()]) should
-	/// return true.
-	function pairing(G1Point[] memory p1, G2Point[] memory p2) view internal returns (bool) {
-		require(p1.length == p2.length);
-		uint elements = p1.length;
-		uint inputSize = elements * 6;
-		uint[] memory input = new uint[](inputSize);
-		for (uint i = 0; i < elements; i++)
-		{
-			input[i * 6 + 0] = p1[i].X;
-			input[i * 6 + 1] = p1[i].Y;
-			input[i * 6 + 2] = p2[i].X[0];
-			input[i * 6 + 3] = p2[i].X[1];
-			input[i * 6 + 4] = p2[i].Y[0];
-			input[i * 6 + 5] = p2[i].Y[1];
-		}
-		uint[1] memory out;
+	function g1mulCalldata(G1Point calldata p, uint s) view internal returns (G1Point memory r) {
+		uint[3] memory input;
+		input[0] = p.X;
+		input[1] = p.Y;
+		input[2] = s;
 		bool success;
 		assembly {
-			success := staticcall(sub(gas()	, 2000), 8, add(input, 0x20), mul(inputSize, 0x20), out, 0x20)
-			// Use "invalid" to make gas estimation work
-			//switch success case 0 { invalid }
+			success := staticcall(sub(gas(), 2000), 7, input, 0x60, r, 0x40)
 		}
-		require(success);
-		return out[0] != 0;
+		require (success);
 	}
 
-	/// Convenience method for a pairing check for two pairs.
-	function pairingProd2(G1Point memory a1, G2Point memory a2, G1Point memory b1, G2Point memory b2) view internal returns (bool) {
-		G1Point[] memory p1 = new G1Point[](2);
-		G2Point[] memory p2 = new G2Point[](2);
-		p1[0] = a1;
-		p1[1] = b1;
-		p2[0] = a2;
-		p2[1] = b2;
-		return pairing(p1, p2);
+	function g1mulStorage(G1Point storage p, uint s) view internal returns (G1Point memory r) {
+		uint[3] memory input;
+		input[0] = p.X;
+		input[1] = p.Y;
+		input[2] = s;
+		bool success;
+		assembly {
+			success := staticcall(sub(gas(), 2000), 7, input, 0x60, r, 0x40)
+		}
+		require (success);
 	}
-	
+
 	uint256 internal constant FIELD_MODULUS = 0x30644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd47;
-
-    /**
-     * @notice Get the field modulus
-     * @return The field modulus
-     */
-    function GetFieldModulus() public pure returns (uint256) {
-        return FIELD_MODULUS;
-    }
 
     function submod2(uint256 a, uint256 b, uint256 n) internal pure returns (uint256) {
         return addmod(a, n - b, n);
@@ -147,15 +129,15 @@ contract Dex
 
 	function equals(
 			G1Point memory a, G1Point memory b			
-	) view internal returns (bool) {		
+	) pure internal returns (bool) {		
 		return a.X==b.X && a.Y==b.Y;
 	}
 
-	function negate(G1Point memory p) public payable returns (G1Point memory) {
-        if (p.X == 0 && p.Y == 0)
-            return G1Point(0, 0);
-        return G1Point(p.X, FIELD_MODULUS - (p.Y % FIELD_MODULUS));
-    }
+	function equalsCalldata(
+			G1Point calldata a, G1Point memory b
+	) pure internal returns (bool) {
+		return a.X==b.X && a.Y==b.Y;
+	}
 
     // ========================== PVGSS-SSS Verification ===============================
 
@@ -599,34 +581,23 @@ contract Dex
 
     // ===== PVGSS-SSS Verification =====
     function PVGSSVerify(G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray,G1Point[] memory C,G1Point[] memory PK, uint256[] memory I) public payable returns (bool) {
-        
-        Prf memory prf ;
-        prf.Cp = new G1Point[](shatArray.length);
-        prf.ShatArray = new uint256[](shatArray.length);
-        for (uint i = 0; i < shatArray.length;i++){
-            prf.Cp[i] = cp[i];
-            prf.ShatArray[i] = shatArray[i];
-        }
-        prf.Xc = xc;
-        prf.Shat = shat;
         uint256 nodeId = 0;
         uint256 startIdx = 0;
         uint256[] memory Q = new uint256[](I.length);
         for(uint256 i = 0; i < I.length; i++) {
-            Q[i] = prf.ShatArray[I[i]];
+            Q[i] = shatArray[I[i]];
         }
-        for(uint i = 0; i < prf.ShatArray.length;i++) {
-            G1Point memory left = prf.Cp[i];
-            G1Point memory temp1 = g1mul(C[i],prf.Xc);
-            G1Point memory temp2 = g1mul(PK[i],prf.ShatArray[i]);
+        for(uint i = 0; i < shatArray.length;i++) {
+            G1Point memory temp1 = g1mul(C[i],xc);
+            G1Point memory temp2 = g1mul(PK[i],shatArray[i]);
             G1Point memory right = g1add(temp1,temp2);
-            if (!equals(left,right)) {
+            if (!equals(cp[i],right)) {
                 VerifyResult.push(false);
                 return false;
             }
         }
         (uint256 recovershat, uint256 idx) = GSSRecon(nodeId,Q,startIdx);
-        if (prf.Shat != recovershat) {
+        if (shat != recovershat) {
             VerifyResult.push(false);
             return false;
         }
@@ -639,20 +610,42 @@ contract Dex
     }
 
 
-    function PVGSSKeyVrf(G1Point memory C, G1Point memory decShare, G1Point memory pk1, G1Point memory com1, G1Point memory com2, uint256 challenge, uint256 response) public payable returns (bool) {
-        
-        G1Point memory L1 = g1mul(C, response);
-        G1Point memory R1_term = g1mul(decShare, challenge);
-        G1Point memory R1 = g1add(com1, R1_term);
+    function PVGSSKeyVrf(G1Point calldata C, G1Point calldata decShare, G1Point calldata pk1, G1Point calldata com1, G1Point calldata com2, uint256 challenge, uint256 response) external payable returns (bool) {
+        G1Point memory L1 = g1mulCalldata(C, response);
+        G1Point memory R1_term = g1mulCalldata(decShare, challenge);
+        G1Point memory R1 = g1addCalldata(com1, R1_term);
 
         if (L1.X != R1.X || L1.Y != R1.Y) {
             KeyVerifyResult.push(false);
             return false;
         }
 
-        G1Point memory L2 = g1mul(pk1, response);
-        G1Point memory R2_term = g1mul(G1, challenge);
-        G1Point memory R2 = g1add(com2, R2_term);
+        G1Point memory L2 = g1mulCalldata(pk1, response);
+        G1Point memory R2_term = g1mulStorage(G1, challenge);
+        G1Point memory R2 = g1addCalldata(com2, R2_term);
+        
+        if (L2.X != R2.X || L2.Y != R2.Y) {
+            KeyVerifyResult.push(false);
+            return false;
+        }
+
+        KeyVerifyResult.push(true);
+        return true;
+    }
+
+    function _PVGSSKeyVrf(G1Point storage C, G1Point calldata decShare, G1Point storage pk1, G1Point calldata com1, G1Point calldata com2, uint256 challenge, uint256 response) internal returns (bool) {
+        G1Point memory L1 = g1mulStorage(C, response);
+        G1Point memory R1_term = g1mulCalldata(decShare, challenge);
+        G1Point memory R1 = g1addCalldata(com1, R1_term);
+
+        if (L1.X != R1.X || L1.Y != R1.Y) {
+            KeyVerifyResult.push(false);
+            return false;
+        }
+
+        G1Point memory L2 = g1mulStorage(pk1, response);
+        G1Point memory R2_term = g1mulStorage(G1, challenge);
+        G1Point memory R2 = g1addCalldata(com2, R2_term);
         
         if (L2.X != R2.X || L2.Y != R2.Y) {
             KeyVerifyResult.push(false);
@@ -686,31 +679,21 @@ contract Dex
         if (!ReconPolynomial(0, shatArray)){
             LSSSVerifyResult.push(false);
             return false;           
-        }
-         Prf memory Lprf ;
-         Lprf.Cp = new G1Point[](shatArray.length);
-         Lprf.ShatArray = new uint256[](shatArray.length);
-         for (uint i = 0; i < shatArray.length;i++){
-             Lprf.Cp[i] = cp[i];
-             Lprf.ShatArray[i] = shatArray[i];
          }
-         Lprf.Xc = xc;
-         Lprf.Shat = shat;
-         for(uint i = 0; i < Lprf.ShatArray.length;i++) {
-             G1Point memory left = Lprf.Cp[i];
-             G1Point memory right = g1add(g1mul(C[i],Lprf.Xc),g1mul(PK[i],Lprf.ShatArray[i]));
-             if (!equals(left,right)) {
+         for(uint i = 0; i < shatArray.length;i++) {
+             G1Point memory right = g1add(g1mul(C[i],xc),g1mul(PK[i],shatArray[i]));
+             if (!equals(cp[i],right)) {
                  LSSSVerifyResult.push(false);
                  return false;
              }
          }
-         uint256 recovershat = LSSSRecon(invmatrix,Lprf.ShatArray,I);
-         if (Lprf.Shat != recovershat) {
+         uint256 recovershat = LSSSRecon(invmatrix,shatArray,I);
+         if (shat != recovershat) {
              LSSSVerifyResult.push(false);
              return false;
          }
-         uint256 recovershat1 = LSSSRecon(invmatrix1,Lprf.ShatArray,I1);
-         if (Lprf.Shat != recovershat1) {
+         uint256 recovershat1 = LSSSRecon(invmatrix1,shatArray,I1);
+         if (shat != recovershat1) {
              LSSSVerifyResult.push(false);
              return false;
          }
@@ -720,52 +703,14 @@ contract Dex
 
      // LSSSRecon
      // change matrix to invRecMatrix
-     function LSSSRecon(uint256[][] memory invRecMatrix, uint256[] memory shares, uint256[] memory I) public view returns (uint256) {
-         uint256 rows = I.length;
-         // uint256[][] memory recMatrix = new uint256[][](rows);
-         // for (uint256 i = 0; i < rows; i++) {
-         //     recMatrix[i] = new uint256[](rows);
-         //     for (uint256 j = 0; j < rows; j++) {
-         //         recMatrix[i][j] = matrix[I[i]][j];
-         //     }
-         // }
-         // uint256[][] memory invRecMatrix = GaussJordanInverse(recMatrix);
-         uint256[][] memory one = new uint256[][](1);
-         one[0] = new uint256[](rows);
-         one[0][0] = 1;
-         for (uint256 i = 1; i < rows; i++) {
-             one[0][i] = 0;
-         }
-         uint256[][] memory w = MultiplyMatrix(one, invRecMatrix);
-         uint256[][] memory shares2 = new uint256[][](rows);
-         for(uint256 i = 0; i < rows; i++) {
-             shares2[i] = new uint256[](1);
-             shares2[i][0] = shares[I[i]];
-         }
-        
-         uint256[][] memory reconS = MultiplyMatrix(w, shares2);
-         return reconS[0][0];
-     }
-     function MultiplyMatrix(uint256[][] memory A, uint256[][] memory B) internal pure returns (uint256[][] memory) {
-         uint256 n = A.length;
-         uint256 m = A[0].length;
-         uint256 p = B[0].length;
-         require(B.length == m,"The number of columns of matrix A does not match the number of rows of matrix B.");
-         uint256[][] memory C = new uint256[][](n);
-         for (uint256 i = 0; i < n; i++) {
-             C[i] = new uint256[](p);
-         }
-         for (uint256 i = 0; i < n; i++) {
-             for (uint256 j = 0; j < p; j++) {
-                 uint256 sum = 0;
-                 for(uint256 k = 0; k < m; k++) {
-                     sum = addmod(sum, mulmod(A[i][k], B[k][j], GEN_ORDER), GEN_ORDER);
-                 }
-                 C[i][j] = sum;
-             }
-         }
-         return C;
-     }
+	     function LSSSRecon(uint256[][] memory invRecMatrix, uint256[] memory shares, uint256[] memory I) public pure returns (uint256) {
+	         uint256 rows = I.length;
+	         uint256 reconS = 0;
+	         for(uint256 i = 0; i < rows; i++) {
+	             reconS = addmod(reconS, mulmod(invRecMatrix[0][i], shares[I[i]], GEN_ORDER), GEN_ORDER);
+	         }
+	         return reconS;
+	     }
 
      function GaussJordanInverse(uint256[][] memory A) internal view returns (uint256[][] memory) {
          uint256 n = A.length;
@@ -1064,7 +1009,7 @@ contract Dex
         emit SessionStateUpdated(id, session.state);
     }
 
-    function swap2(uint256 id, G1Point memory decShare, G1Point memory com1, G1Point memory com2, uint256 challenge, uint256 response) external onlyExchanger(id){
+    function swap2(uint256 id, G1Point calldata decShare, G1Point calldata com1, G1Point calldata com2, uint256 challenge, uint256 response) external onlyExchanger(id){
         Session storage session = sessions[id];
         // Check session state
         require(session.state == SessionState.finishSwap1 || session.state == SessionState.halfSwap2, "Session state is invalid for swap2");
@@ -1073,7 +1018,7 @@ contract Dex
         require(stakedETH[msg.sender] >= MINIMAL_EXCHANGER_STAKE, "Insufficient stake");
 
         // Invoke PVGSSKeyVrf and store decShare
-        require (PVGSSKeyVrf(session.Cshares1[msg.sender], decShare, pubkey1[msg.sender], com1, com2, challenge, response) == true, "KeyVrf failed");
+        require (_PVGSSKeyVrf(session.Cshares1[msg.sender], decShare, pubkey1[msg.sender], com1, com2, challenge, response) == true, "KeyVrf failed");
 
         session.shares[msg.sender] = decShare;
         if (msg.sender == session.exchangers[0]) {
@@ -1155,14 +1100,14 @@ contract Dex
     }
 
     // Watcher submits S_i to resolve dispute
-    function submitWatcherShare(uint256 id, G1Point memory decShare, G1Point memory com1, G1Point memory com2, uint256 challenge, uint256 response) external {
+    function submitWatcherShare(uint256 id, G1Point calldata decShare, G1Point calldata com1, G1Point calldata com2, uint256 challenge, uint256 response) external {
         Session storage session = sessions[id];
 
         require(session.state == SessionState.Complain, "Session is not complained");
         require(block.timestamp <= session.expiration2, "Session is out of t2");
         require(isWatcher(id, msg.sender), "Only watchers can submit share");
 
-        require (PVGSSKeyVrf(session.Cshares1[msg.sender], decShare, pubkey1[msg.sender], com1, com2, challenge, response) == true, "KeyVrf failed");
+        require (_PVGSSKeyVrf(session.Cshares1[msg.sender], decShare, pubkey1[msg.sender], com1, com2, challenge, response) == true, "KeyVrf failed");
         session.shares[msg.sender] = decShare;
         session.watcher_flag[msg.sender] = true;
     }
@@ -1304,7 +1249,11 @@ contract Dex
 
     }
 
-    function g1PointToBytes32(G1Point memory point) internal pure returns (bytes32) {
-        return keccak256(abi.encode(point.X, point.Y));
-    }
-}
+	    function g1PointToBytes32(G1Point memory point) internal pure returns (bytes32) {
+	        return keccak256(abi.encode(point.X, point.Y));
+	    }
+
+	    function g1PointToBytes32Calldata(G1Point calldata point) internal pure returns (bytes32) {
+	        return keccak256(abi.encode(point.X, point.Y));
+	    }
+	}
