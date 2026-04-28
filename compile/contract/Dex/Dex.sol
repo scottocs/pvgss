@@ -162,7 +162,7 @@ contract Dex
     struct Node {
         bool IsLeaf;
         uint256[] Children; // Child nodes ID
-        uint256 Childrennum; // Child nodes numbers
+        uint256 ChildrenNum; // Child nodes numbers
         uint256 T; //Threshold
         uint256 Idx; //The local index of the node under its parent
     }
@@ -236,7 +236,7 @@ contract Dex
         uint256 nodeId = parentIdx * 100 + idx;
         Node storage newNode = nodes[nodeId];
         newNode.IsLeaf = isLeaf;
-        newNode.Childrennum = childNum;
+        newNode.ChildrenNum = childNum;
         newNode.T = t;
         newNode.Idx = idx;
     }
@@ -244,7 +244,7 @@ contract Dex
     // add child nodes for some node
     function addChild(uint256 parentIdx,uint256[] memory childIdxs) public payable {
         uint256 parentNodeId = parentIdx;
-        require(nodes[parentNodeId].Childrennum >= childIdxs.length,"Too many child");
+        require(nodes[parentNodeId].ChildrenNum >= childIdxs.length,"Too many child");
         Node storage parentNode = nodes[parentNodeId];
         for (uint256 i = 0; i < childIdxs.length; i++) {
             uint256 childNodeId = parentIdx * 100 + childIdxs[i];
@@ -277,10 +277,10 @@ contract Dex
             return (1, secret, true);
         }
 
-        uint256[] memory childSecrets = new uint256[](AA.Childrennum);
+        uint256[] memory childSecrets = new uint256[](AA.ChildrenNum);
         uint256 currentOffset = offset;
         
-        for(uint256 i = 0; i < AA.Childrennum; i++) {
+        for(uint256 i = 0; i < AA.ChildrenNum; i++) {
             if (i >= AA.Children.length) {
                 return (0, 0, false);
             }
@@ -379,10 +379,10 @@ contract Dex
         }
 
         // 2. 非叶子节点：递归收集子节点的秘密值
-        uint256[] memory childSecrets = new uint256[](node.Childrennum);
+        uint256[] memory childSecrets = new uint256[](node.ChildrenNum);
         uint256 currentOffset = offset;
 
-        for (uint256 i = 0; i < node.Childrennum; i++) {
+        for (uint256 i = 0; i < node.ChildrenNum; i++) {
             if (i >= node.Children.length) {
                 return (0, 0, false); // Children count mismatch
             }
@@ -403,7 +403,7 @@ contract Dex
         }
         
         // 3. 获取子秘密数量并检查阈值
-        uint256 n = node.Childrennum; // number of child secrets
+        uint256 n = node.ChildrenNum; // number of child secrets
         uint256 k = node.T;          // threshold
         
         if (n < k) {

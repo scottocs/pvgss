@@ -13,7 +13,7 @@ import (
 	"pvgss/crypto/node"
 )
 
-type Prf struct {
+type Proof struct {
 	Cp       []*bn128.G1
 	Xc       *big.Int
 	Shat     *big.Int
@@ -40,7 +40,7 @@ func PVGSSSetup() (*big.Int, *bn128.G1, *bn128.G2) {
 	return sk, pk1, pk2
 }
 
-func PVGSSShare(s *big.Int, AA *node.Node, PK []*bn128.G1) ([]*bn128.G1, *Prf, error) {
+func PVGSSShare(s *big.Int, AA *node.Node, PK []*bn128.G1) ([]*bn128.G1, *Proof, error) {
 	C := make([]*bn128.G1, len(PK))
 	Cp := make([]*bn128.G1, len(PK))
 	shares, _ := lsss.Share(s, AA)
@@ -64,7 +64,7 @@ func PVGSSShare(s *big.Int, AA *node.Node, PK []*bn128.G1) ([]*bn128.G1, *Prf, e
 		shatarray[i] = new(big.Int).Sub(sharesp[i], temp)
 		shatarray[i].Mod(shatarray[i], bn128.Order)
 	}
-	prfs := &Prf{
+	prfs := &Proof{
 		Cp:       Cp,
 		Xc:       c,
 		Shat:     shat,
@@ -74,7 +74,7 @@ func PVGSSShare(s *big.Int, AA *node.Node, PK []*bn128.G1) ([]*bn128.G1, *Prf, e
 }
 
 // Invokes gssreconwithvrf to check
-func PVGSSVerify(C []*bn128.G1, prfs *Prf, root *node.Node, AA *node.Node, PK []*bn128.G1, I []int) (bool, error) {
+func PVGSSVerify(C []*bn128.G1, prfs *Proof, root *node.Node, AA *node.Node, PK []*bn128.G1, I []int) (bool, error) {
 	for i := 0; i < len(C); i++ {
 		left := prfs.Cp[i]
 		temp1 := new(bn128.G1).ScalarMult(C[i], prfs.Xc)
@@ -92,7 +92,7 @@ func PVGSSVerify(C []*bn128.G1, prfs *Prf, root *node.Node, AA *node.Node, PK []
 		fmt.Printf("LSSS Shares No Pass ReconPolynomial Test!!!\n")
 		return false, nil
 	}
-	//Methed 3.2:Verify through parity-check matrix
+	//Method 3.2:Verify through parity-check matrix
 	//Calculate the parity-check matrix
 	matrix := lsss.Convert(root)
 	verPCMatrix := gssreconwithvrf.GenerateParityMatrix(matrix)

@@ -79,7 +79,7 @@ func TestGSSReconWithVrf(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Reconstruction failed: %v", err)
 		}
-		fmt.Println("orignal secret = ", secret)
+		fmt.Println("original secret = ", secret)
 		fmt.Println("recover secret = ", recoveredSecret)
 	} else {
 		fmt.Printf("GSS Shares No Pass ReconPolynomial Test!!!\n")
@@ -116,7 +116,7 @@ func TestGSSReconWithVrf(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Reconstruction failed: %v", err)
 		}
-		fmt.Println("orignal secret = ", secret)
+		fmt.Println("original secret = ", secret)
 		fmt.Println("recover secret = ", recoveredSecret)
 	} else {
 		fmt.Printf("GSS Shares No Pass RSCode Test!!!\n")
@@ -151,7 +151,7 @@ func TestGSSReconWithVrf(t *testing.T) {
 	// 	if err != nil {
 	// 		t.Fatalf("Reconstruction failed: %v", err)
 	// 	}
-	// 	fmt.Println("orignal secret = ", secret)
+	// 	fmt.Println("original secret = ", secret)
 	// 	fmt.Println("recover secret = ", recoveredSecret)
 	// } else {
 	// 	fmt.Printf("GSS Shares No Pass Sparse Matrix Test\n")
@@ -196,7 +196,7 @@ func TestGSSReconWithVrf(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Reconstruction failed: %v", err)
 		}
-		fmt.Println("orignal secret = ", secret)
+		fmt.Println("original secret = ", secret)
 		fmt.Println("recover secret = ", recoveredSecret)
 	} else {
 		fmt.Printf("LSSS Shares No Pass ReconPolynomial Test!!!\n")
@@ -218,13 +218,13 @@ func TestGSSReconWithVrf(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Reconstruction failed: %v", err)
 		}
-		fmt.Println("orignal secret = ", secret)
+		fmt.Println("original secret = ", secret)
 		fmt.Println("recover secret = ", recoveredSecret)
 	} else {
 		fmt.Printf("LSSS Shares No Pass RSCode Test!!!\n")
 	}
 
-	//Methed 3.2:Verify through parity-check matrix
+	//Method 3.2:Verify through parity-check matrix
 
 	//Transfer secret shares as shares matrix with 1 column
 	lssssharesMatrix := opmatrix.SetToMatrix(lsssshares)

@@ -9,10 +9,11 @@ import (
 	bn128 "pvgss/bn128"
 	"pvgss/compile/contract/Dex"
 	"pvgss/crypto/dleq"
-	"pvgss/crypto/pvgss-lsss2/lsss"
-	"pvgss/crypto/pvgss-lsss2/pvgss_lsss"
-	"pvgss/crypto/pvgss-sss/gss"
-	"pvgss/crypto/pvgss-sss/pvgss_sss"
+	"pvgss/crypto/lssspvgss"
+	"pvgss/crypto/lssspvgss/lsss"
+	"pvgss/crypto/lssspvgss/opmatrix"
+	"pvgss/crypto/node"
+	"pvgss/crypto/ssspvgss"
 	"pvgss/utils"
 	"testing"
 	"time"
@@ -51,13 +52,13 @@ func TestDexGasLSSS(t *testing.T) {
 	allPK1 := make([]*bn128.G1, accountNum)
 	allPK2 := make([]*bn128.G2, accountNum)
 	for i := 0; i < accountNum; i++ {
-		allSK[i], allPK1[i], allPK2[i] = pvgss_sss.PVGSSSetup()
+		allSK[i], allPK1[i], allPK2[i] = ssspvgss.PVGSSSetup()
 	}
 	if err != nil {
 		log.Fatalf("Failed to load accounts: %v", err)
 	}
 
-	dex_contract_address, pveth_contract_address, pvusdt_contract_address, _ := utils.DepolyAndRegister(allPK1, allPK2)
+	dex_contract_address, pveth_contract_address, pvusdt_contract_address, _ := utils.DeployAndRegister(allPK1, allPK2)
 	client, err := ethclient.Dial("ws://127.0.0.1:8545")
 	if err != nil {
 		log.Fatalf("Failed to connect to the Ethereum client: %v, %v", err, client)
@@ -101,15 +102,15 @@ func TestDexGasLSSS(t *testing.T) {
 		t := 1        // the threshold of Watchers
 		num := nx + 2 // the number of leaf nodes
 
-		// Of-chain: construct the access control structure
-		root := gss.NewNode(false, 3, 2, big.NewInt(int64(0)))
-		A := gss.NewNode(true, 0, 1, big.NewInt(int64(1)))
-		B := gss.NewNode(true, 0, 1, big.NewInt(int64(2)))
-		X := gss.NewNode(false, nx, t, big.NewInt(int64(3)))
-		root.Children = []*gss.Node{A, B, X}
-		Xp := make([]*gss.Node, nx)
+		// Off-chain: construct the access control structure
+		root := node.NewNode(false, 3, 2, big.NewInt(int64(0)))
+		A := node.NewNode(true, 0, 1, big.NewInt(int64(1)))
+		B := node.NewNode(true, 0, 1, big.NewInt(int64(2)))
+		X := node.NewNode(false, nx, t, big.NewInt(int64(3)))
+		root.Children = []*node.Node{A, B, X}
+		Xp := make([]*node.Node, nx)
 		for i := 0; i < nx; i++ {
-			Xp[i] = gss.NewNode(true, 0, 1, big.NewInt(int64(i+1)))
+			Xp[i] = node.NewNode(true, 0, 1, big.NewInt(int64(i+1)))
 		}
 		X.Children = Xp
 
@@ -131,7 +132,7 @@ func TestDexGasLSSS(t *testing.T) {
 
 		matrix := lsss.Convert(root)
 		// 2. PVGSSShare
-		lC, lprfs, _ := pvgss_lsss.PVGSSShare(secret, matrix, PK1)
+		lC, lprfs, _ := lssspvgss.PVGSSShare(secret, root, PK1)
 
 		// 3. PVGSSVerify
 		// A and B
@@ -143,7 +144,7 @@ func TestDexGasLSSS(t *testing.T) {
 		for i := 0; i < rows0; i++ {
 			recMatrix0[i] = matrix[I0[i]][:rows0]
 		}
-		invRecMatrix0, _ := lsss.GaussJordanInverse(recMatrix0)
+		invRecMatrix0, _ := opmatrix.GaussJordanInverse(recMatrix0)
 
 		// A and Watchers
 		I00 := make([]int, 1+t)
@@ -156,23 +157,23 @@ func TestDexGasLSSS(t *testing.T) {
 		for i := 0; i < rows; i++ {
 			recMatrix[i] = matrix[I00[i]][:rows]
 		}
-		invRecMatrix, _ := lsss.GaussJordanInverse(recMatrix)
-		_, _ = pvgss_lsss.PVGSSVerify(lC, lprfs, invRecMatrix0, invRecMatrix, PK1, I0, I00)
+		invRecMatrix, _ := opmatrix.GaussJordanInverse(recMatrix)
+		_, _ = lssspvgss.PVGSSVerify(lC, lprfs, root, root, PK1, I0)
 
-		//fmt.Println("Off-chain Shares verfication result = ", lisShareValid)
+		//fmt.Println("Off-chain Shares verification result = ", lisShareValid)
 
 		// 4. PVGSSPreRecon
 		ldecShares := make([]*bn128.G1, num)
 		lproofs := make([]*dleq.DLEQProof, num)
 		for i := 0; i < num; i++ {
-			ldecShares[i], lproofs[i], _ = pvgss_lsss.PVGSSPreRecon(lC[i], SK[i])
+			ldecShares[i], lproofs[i], _ = lssspvgss.PVGSSPreRecon(lC[i], SK[i])
 		}
 
 		// 5. PVGSSKeyVrf
 		// Off-chain
-		lofchainIsKeyValid := make([]bool, num)
+		loffchainIsKeyValid := make([]bool, num)
 		for i := 0; i < num; i++ {
-			lofchainIsKeyValid[i], _ = pvgss_lsss.PVGSSKeyVrf(lC[i], ldecShares[i], PK1[i], lproofs[i])
+			loffchainIsKeyValid[i], _ = lssspvgss.PVGSSKeyVrf(lC[i], ldecShares[i], PK1[i], lproofs[i])
 		}
 
 		// On-chain  account2 call swap1 in t1
@@ -205,7 +206,7 @@ func TestDexGasLSSS(t *testing.T) {
 		//swap2
 		log.Println("account1 swap2 in t1")
 		auth = utils.Transact(client, privateKeys[0], big.NewInt(0))
-		tx, _ = dexInstance.Swap2(auth, orderId, utils.G1ToPoint(ldecShares[0]), utils.G1ToPoint(lproofs[0].C1), utils.G1ToPoint(lproofs[0].C2), lproofs[1].Challenge, lproofs[0].Response)
+		tx, _ = dexInstance.Swap2(auth, orderId, utils.G1ToPoint(ldecShares[0]), utils.G1ToPoint(lproofs[0].C1), utils.G1ToPoint(lproofs[0].C2), lproofs[0].Challenge, lproofs[0].Response)
 		receipt, _ = bind.WaitMined(context.Background(), client, tx)
 		log.Println("On-chain Swap2 Gas cost = ", receipt.GasUsed)
 
@@ -288,13 +289,13 @@ func TestDexGasSSS(t *testing.T) {
 	allPK1 := make([]*bn128.G1, accountNum)
 	allPK2 := make([]*bn128.G2, accountNum)
 	for i := 0; i < accountNum; i++ {
-		allSK[i], allPK1[i], allPK2[i] = pvgss_sss.PVGSSSetup()
+		allSK[i], allPK1[i], allPK2[i] = ssspvgss.PVGSSSetup()
 	}
 	if err != nil {
 		log.Fatalf("Failed to load accounts: %v", err)
 	}
 
-	dex_contract_address, pveth_contract_address, pvusdt_contract_address, _ := utils.DepolyAndRegister(allPK1, allPK2)
+	dex_contract_address, pveth_contract_address, pvusdt_contract_address, _ := utils.DeployAndRegister(allPK1, allPK2)
 
 	client, err := ethclient.Dial("ws://127.0.0.1:8545")
 	if err != nil {
@@ -335,15 +336,15 @@ func TestDexGasSSS(t *testing.T) {
 		t := 1        // the threshold of Watchers
 		num := nx + 2 // the number of leaf nodes
 
-		// Of-chain: construct the access control structure
-		root := gss.NewNode(false, 3, 2, big.NewInt(int64(0)))
-		A := gss.NewNode(true, 0, 1, big.NewInt(int64(1)))
-		B := gss.NewNode(true, 0, 1, big.NewInt(int64(2)))
-		X := gss.NewNode(false, nx, t, big.NewInt(int64(3)))
-		root.Children = []*gss.Node{A, B, X}
-		Xp := make([]*gss.Node, nx)
+		// Off-chain: construct the access control structure
+		root := node.NewNode(false, 3, 2, big.NewInt(int64(0)))
+		A := node.NewNode(true, 0, 1, big.NewInt(int64(1)))
+		B := node.NewNode(true, 0, 1, big.NewInt(int64(2)))
+		X := node.NewNode(false, nx, t, big.NewInt(int64(3)))
+		root.Children = []*node.Node{A, B, X}
+		Xp := make([]*node.Node, nx)
 		for i := 0; i < nx; i++ {
-			Xp[i] = gss.NewNode(true, 0, 1, big.NewInt(int64(i+1)))
+			Xp[i] = node.NewNode(true, 0, 1, big.NewInt(int64(i+1)))
 		}
 		X.Children = Xp
 
@@ -364,9 +365,9 @@ func TestDexGasSSS(t *testing.T) {
 		}
 
 		// 2. PVGSSShare
-		C, prfs, _ := pvgss_sss.PVGSSShare(secret, root, PK1)
+		C, prfs, _ := ssspvgss.PVGSSShare(secret, root, PK1)
 
-		// Of-chain: construct paths that satisfy the access control structure
+		// Off-chain: construct paths that satisfy the access control structure
 		I := make([]int, nx+2)
 		// I[0] = 0
 		for i := 0; i < nx+2; i++ {
@@ -388,24 +389,24 @@ func TestDexGasSSS(t *testing.T) {
 
 		// 3. PVGSSVerify
 		// Off-chain
-		isShareValid, _ := pvgss_sss.PVGSSVerify(C, prfs, root, PK1, root, I)
+		isShareValid, _ := ssspvgss.PVGSSVerify(C, prfs, root, PK1, root, I)
 
-		log.Println("Of-chain Verfication result = ", isShareValid)
+		log.Println("Off-chain Verification result = ", isShareValid)
 
 		// 4. PVGSSPreRecon
 		decShares := make([]*bn128.G1, num)
 		proofs := make([]*dleq.DLEQProof, num)
 		for i := 0; i < num; i++ {
-			decShares[i], proofs[i], _ = pvgss_sss.PVGSSPreRecon(C[i], SK[i])
+			decShares[i], proofs[i], _ = ssspvgss.PVGSSPreRecon(C[i], SK[i])
 		}
 
 		// 5. PVGSSKeyVrf
 		// Off-chain
-		ofchainIsKeyValid := make([]bool, num)
+		offchainIsKeyValid := make([]bool, num)
 		for i := 0; i < num; i++ {
-			ofchainIsKeyValid[i], _ = pvgss_sss.PVGSSKeyVrf(C[i], decShares[i], PK1[i], proofs[i])
+			offchainIsKeyValid[i], _ = ssspvgss.PVGSSKeyVrf(C[i], decShares[i], PK1[i], proofs[i])
 		}
-		log.Println("Of-chain KeyVerification result = ", ofchainIsKeyValid)
+		log.Println("Off-chain KeyVerification result = ", offchainIsKeyValid)
 
 		// On-chain  account2 call swap1 in t1
 		log.Println("account2 swap1 in t1")
@@ -419,7 +420,7 @@ func TestDexGasSSS(t *testing.T) {
 		log.Println("On-chain Swap1 Gas cost = ", receipt.GasUsed)
 
 		onchainIsShareValid, _ := dexInstance.GetVerifyResult(&bind.CallOpts{})
-		log.Println("On-chain Verfication result = ", onchainIsShareValid)
+		log.Println("On-chain Verification result = ", onchainIsShareValid)
 
 		//account1 call swap1 and swap2 in t1
 
@@ -438,7 +439,7 @@ func TestDexGasSSS(t *testing.T) {
 		//swap2
 		log.Println("account1 swap2 in t1")
 		auth = utils.Transact(client, privateKeys[0], big.NewInt(0))
-		tx, _ = dexInstance.Swap2(auth, orderId, utils.G1ToPoint(decShares[0]), utils.G1ToPoint(proofs[0].C1), utils.G1ToPoint(proofs[0].C2), proofs[1].Challenge, proofs[0].Response)
+		tx, _ = dexInstance.Swap2(auth, orderId, utils.G1ToPoint(decShares[0]), utils.G1ToPoint(proofs[0].C1), utils.G1ToPoint(proofs[0].C2), proofs[0].Challenge, proofs[0].Response)
 		receipt, _ = bind.WaitMined(context.Background(), client, tx)
 		log.Println("On-chain Swap2 Gas cost = ", receipt.GasUsed)
 

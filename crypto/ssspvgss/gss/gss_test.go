@@ -61,7 +61,7 @@ func TestGSS(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Reconstruction failed: %v", err)
 	}
-	fmt.Println("orignal secret = ", secret)
+	fmt.Println("original secret = ", secret)
 	fmt.Println("recover secret = ", recoveredSecret1)
 	// Verify that the recovered secret is the same as the original secret
 	if recoveredSecret1.Cmp(secret) != 0 {
@@ -96,7 +96,7 @@ func TestGSS(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Reconstruction failed: %v", err)
 	}
-	fmt.Println("orignal secret = ", secret)
+	fmt.Println("original secret = ", secret)
 	fmt.Println("recover secret = ", recoveredSecret2)
 	// Verify that the recovered secret is the same as the original secret
 	if recoveredSecret2.Cmp(secret) != 0 {
@@ -153,7 +153,7 @@ func TestGrpGSS(t *testing.T) {
 	path1 := node.NewNode(false, 2, 2, big.NewInt(int64(0)))
 	path1.Children = []*node.Node{B, X}
 	recoveredSecret1, _, _ := GrpGSSRecon(path1, Q1)
-	fmt.Println("orignal secret = ", Secret)
+	fmt.Println("original secret = ", Secret)
 	fmt.Println("recover secret = ", recoveredSecret1)
 	if !(recoveredSecret1.String() == Secret.String()) {
 		t.Errorf("Secret reconstruction mismatch under access policy 1: expected %v, got %v", Secret, recoveredSecret1)
@@ -185,7 +185,7 @@ func TestGrpGSS(t *testing.T) {
 	P_E = node.NewNode(true, 0, 1, big.NewInt(int64(1)))
 	P_2.Children = []*node.Node{P_E}
 	recoveredSecret2, _, _ := GrpGSSRecon(path2, Q2)
-	fmt.Println("orignal secret = ", Secret)
+	fmt.Println("original secret = ", Secret)
 	fmt.Println("recover secret = ", recoveredSecret2)
 	if !(recoveredSecret2.String() == Secret.String()) {
 		t.Errorf("Secret reconstruction mismatch: expected under access policy 2 %v, got %v", Secret, recoveredSecret2)

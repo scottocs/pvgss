@@ -1,5 +1,5 @@
 // Implementation of PVGSS based on GSS from LSSS.
-package pvgss_lsss
+package lssspvgss
 
 import (
 	"crypto/sha256"

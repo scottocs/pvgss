@@ -14,7 +14,7 @@ import (
 	gss "pvgss/crypto/ssspvgss/gss"
 )
 
-type Prf struct {
+type Proof struct {
 	Cp       []*bn128.G1
 	Xc       *big.Int
 	Shat     *big.Int
@@ -41,7 +41,7 @@ func PVGSSSetup() (*big.Int, *bn128.G1, *bn128.G2) {
 	return sk, pk1, pk2
 }
 
-func PVGSSShare(s *big.Int, AA *node.Node, PK []*bn128.G1) ([]*bn128.G1, *Prf, error) {
+func PVGSSShare(s *big.Int, AA *node.Node, PK []*bn128.G1) ([]*bn128.G1, *Proof, error) {
 	C := make([]*bn128.G1, len(PK))
 	Cp := make([]*bn128.G1, len(PK))
 	shares, _ := gss.GSSShare(s, AA)
@@ -65,7 +65,7 @@ func PVGSSShare(s *big.Int, AA *node.Node, PK []*bn128.G1) ([]*bn128.G1, *Prf, e
 		shatarray[i] = new(big.Int).Sub(sharesp[i], temp)
 		shatarray[i].Mod(shatarray[i], bn128.Order)
 	}
-	prfs := &Prf{
+	prfs := &Proof{
 		Cp:       Cp,
 		Xc:       c,
 		Shat:     shat,
@@ -76,7 +76,7 @@ func PVGSSShare(s *big.Int, AA *node.Node, PK []*bn128.G1) ([]*bn128.G1, *Prf, e
 
 // 1.Invokes gssreconwithvrf
 // 2.Selects an authorized set to recover
-func PVGSSVerify(C []*bn128.G1, prfs *Prf, root *node.Node, PK []*bn128.G1, AA *node.Node, I []int) (bool, error) {
+func PVGSSVerify(C []*bn128.G1, prfs *Proof, root *node.Node, PK []*bn128.G1, AA *node.Node, I []int) (bool, error) {
 
 	for i := 0; i < len(C); i++ {
 		left := prfs.Cp[i]

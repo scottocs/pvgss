@@ -323,7 +323,7 @@ func G2ToPoint(point *bn128.G2) Dex.DexG2Point {
 }
 
 // deploy new dex contract and register and deposit
-func DepolyAndRegister(allPK1 []*bn128.G1, allPK2 []*bn128.G2) (common.Address, common.Address, common.Address, error) {
+func DeployAndRegister(allPK1 []*bn128.G1, allPK2 []*bn128.G2) (common.Address, common.Address, common.Address, error) {
 	privateKeys := []string{
 		GetENV("PRIVATE_KEY_1"),
 		GetENV("PRIVATE_KEY_2"),

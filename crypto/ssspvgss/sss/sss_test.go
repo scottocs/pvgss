@@ -31,7 +31,7 @@ func TestSSS(t *testing.T) {
 		t.Fatalf("Error in Recon: %v", err)
 	}
 	fmt.Println("recover secret = ", secret)
-	fmt.Println("orignal secret = ", s)
+	fmt.Println("original secret = ", s)
 
 	if s.Cmp(secret) != 0 {
 		t.Fatal("Recovered secret does not match the original secret")
@@ -42,7 +42,7 @@ func TestGrpSSS(t *testing.T) {
 	// 1.Set the original secret value
 	s, _ := rand.Int(rand.Reader, bn128.Order)
 	S := new(bn128.G1).ScalarBaseMult(s)
-	fmt.Println("orignal secret = ", S)
+	fmt.Println("original secret = ", S)
 
 	// 2.Set threshold structure
 	n := 5

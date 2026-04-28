@@ -16,7 +16,7 @@ func GSSShare(secret *big.Int, AA *node.Node) ([]*big.Int, error) {
 		s = append(s, secret)
 		return s, nil
 	} else {
-		shares, err := sss.Share(secret, AA.Childrennum, AA.T)
+		shares, err := sss.Share(secret, AA.ChildrenNum, AA.T)
 		if err != nil {
 			return nil, err
 		}
@@ -55,11 +55,11 @@ func reconRecursive(AA *node.Node, Q []*big.Int, offset int) (*big.Int, int, err
 		// Leaf nodes consume 1 shard
 		return s, 1, nil
 	}
-	childShares := make([]*big.Int, 0, AA.Childrennum)
-	childIdx := make([]*big.Int, 0, AA.Childrennum)
+	childShares := make([]*big.Int, 0, AA.ChildrenNum)
+	childIdx := make([]*big.Int, 0, AA.ChildrenNum)
 	// Non-leaf nodes consume the number of shards
 	currentOffset := offset
-	for i := 0; i < AA.Childrennum; i++ {
+	for i := 0; i < AA.ChildrenNum; i++ {
 		if i >= len(AA.Children) || AA.Children[i] == nil {
 			return nil, 0, fmt.Errorf("node [ID:%v]: missing child at index %d", AA.Idx, i)
 		}
@@ -93,7 +93,7 @@ func GrpGSSShare(Secret *bn128.G1, AA *node.Node) ([]*bn128.G1, error) {
 		return S, nil
 	} else {
 		// If it is a non-leaf node, distribute the secret to the child nodes
-		shares, err := sss.GrpShare(Secret, AA.Childrennum, AA.T)
+		shares, err := sss.GrpShare(Secret, AA.ChildrenNum, AA.T)
 		if err != nil {
 			return nil, err
 		}

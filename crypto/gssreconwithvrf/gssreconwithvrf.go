@@ -32,9 +32,9 @@ func verifyRecursiveRP(AA *node.Node, shares []*big.Int, offset int) (int, *big.
 	}
 
 	// 2. Recursively collect all shares of child nodes for the non-leaf node
-	childSecrets := make([]*big.Int, 0, AA.Childrennum)
+	childSecrets := make([]*big.Int, 0, AA.ChildrenNum)
 	currentOffset := offset
-	for i := 0; i < AA.Childrennum; i++ {
+	for i := 0; i < AA.ChildrenNum; i++ {
 		if i >= len(AA.Children) {
 			return 0, nil, fmt.Errorf("node [ID:%v]: children count mismatch", AA.Idx)
 		}
@@ -166,7 +166,7 @@ func RecurRSCode(AA *node.Node, shares []*big.Int) (bool, error) {
 	return true, nil
 }
 func verifyRecursiveRS(AA *node.Node, shares []*big.Int, offset int) (int, *big.Int, error) {
-	// 1. Jugde whether is leaf node
+	// 1. Judge whether is leaf node
 	if AA.IsLeaf {
 		if offset >= len(shares) {
 			return 0, nil, fmt.Errorf("leaf node [ID:%v]: insufficient shares (offset %d)", AA.Idx, offset)
@@ -177,9 +177,9 @@ func verifyRecursiveRS(AA *node.Node, shares []*big.Int, offset int) (int, *big.
 	}
 
 	// 2.Non-leaf nodes: The secret to recursively collecting all child nodes
-	childSecrets := make([]*big.Int, 0, AA.Childrennum)
+	childSecrets := make([]*big.Int, 0, AA.ChildrenNum)
 	currentOffset := offset
-	for i := 0; i < AA.Childrennum; i++ {
+	for i := 0; i < AA.ChildrenNum; i++ {
 		if i >= len(AA.Children) || AA.Children[i] == nil {
 			return 0, nil, fmt.Errorf("node [ID:%v]: missing child at index %d", AA.Idx, i)
 		}
