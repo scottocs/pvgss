@@ -62,7 +62,42 @@ Version: 0.8.25-develop
     go test -v -timeout 30m -run TestDexGasSSS
     ```
 
-5. Run the main.go
+5. Generate reproducible off-chain benchmark CSV 
+
+    ```bash
+    go run ./cmd/pvgssbench -out paper/bench_pvgss.csv -repeat 10
+    ```
+
+    The `-n` flag can be used to override the default watcher counts:
+
+    ```bash
+    go run ./cmd/pvgssbench -n 100,200,300 -repeat 5 -out paper/bench_pvgss.csv
+    ```
+
+    To regenerate only selected paper figures, pass `-figures`, for example:
+
+    ```bash
+    go run ./cmd/pvgssbench -figures 15 -repeat 3 -out paper/bench_pvgss_fig15.csv
+    ```
+
+6. Generate reproducible local-chain gas CSV 
+
+    Start a local chain first:
+
+    ```bash
+    ganache --accounts 20 --mnemonic "pvgss" -l 90071992547 -e 100
+    ```
+
+    Then run:
+
+    ```bash
+    go run ./cmd/dexgas -rpc ws://127.0.0.1:8545 -out paper/dex_gas.csv -schemes lsss-exact,sss-exact,lsss-dual,sss-dual
+    ```
+
+    The runner deploys fresh contracts, prepares accounts, uses `evm_increaseTime`
+    for timeout transitions, and records only the target DEX operations.
+
+7. Run the main.go
     ```bash
     go run main.go
     ```
@@ -89,4 +124,3 @@ In the second round, each exchanger reveals its decrypted share using `PVGSSPreR
 
 In the pessimistic occasion where a player complains to the watchers, who will be involved to resolve dispute using `PVGSSPreRecon`.
 Note that the access structure of the DEX not only tolerates a faulty exchanger but also tolerates `n-t` faulty watchers.
-

@@ -21,9 +21,8 @@ func TestLSSSPVGSS(t *testing.T) {
 	// 1. Setup
 	SK := make([]*big.Int, num)
 	PK1 := make([]*bn128.G1, num)
-	PK2 := make([]*bn128.G2, num)
 	for i := 0; i < num; i++ {
-		SK[i], PK1[i], PK2[i] = PVGSSSetup()
+		SK[i], PK1[i] = PVGSSSetup()
 	}
 
 	// 2. Share
@@ -40,17 +39,17 @@ func TestLSSSPVGSS(t *testing.T) {
 	X.Children = Xp
 	//2.2 Generates PVGSS shares
 	s, _ := rand.Int(rand.Reader, bn128.Order)
-	C, _, err := PVGSSShare(s, root, PK1)
+	C, prfs, err := PVGSSShare(s, root, PK1)
 	if err != nil {
 		t.Fatalf("pvgss failed to share: %v\n", err)
 	}
 
-	// 3. Verify all PVGSS shares via gssreconwithvrf
-	// isShareValid, err := PVGSSVerify(C, prfs, root, PK1, root, I)
-	// if err != nil || isShareValid == false {
-	// 	t.Fatalf("pvgss share verify failed: %v\n", err)
-	// }
-	// fmt.Println("isShareValid : ", isShareValid)
+	// 3. Verify all PVGSS shares via GSS testing
+	isShareValid, err := PVGSSVerify(C, prfs, root, PK1)
+	if err != nil || isShareValid == false {
+		t.Fatalf("pvgss share verify failed: %v\n", err)
+	}
+	fmt.Println("isShareValid : ", isShareValid)
 
 	// 4.PreRecon
 	decShares := make([]*bn128.G1, num)

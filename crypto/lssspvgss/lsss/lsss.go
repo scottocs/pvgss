@@ -5,9 +5,41 @@ import (
 	"fmt"
 	"math/big"
 	bn128 "pvgss/bn128"
-	"pvgss/crypto/lssspvgss/opmatrix"
 	"pvgss/crypto/node"
 )
+
+func multiplyMatrix(A, B [][]*big.Int) ([][]*big.Int, error) {
+	if len(A) == 0 || len(A[0]) == 0 {
+		return nil, fmt.Errorf("matrix A is empty")
+	}
+	if len(B) == 0 || len(B[0]) == 0 {
+		return nil, fmt.Errorf("matrix B is empty")
+	}
+	n := len(A)
+	m := len(A[0])
+	p := len(B[0])
+	if len(B) != m {
+		return nil, fmt.Errorf("matrix dimension mismatch: A has %d columns, B has %d rows", m, len(B))
+	}
+
+	C := make([][]*big.Int, n)
+	for i := range C {
+		C[i] = make([]*big.Int, p)
+		for j := range C[i] {
+			C[i][j] = big.NewInt(0)
+		}
+	}
+	for i := 0; i < n; i++ {
+		for j := 0; j < p; j++ {
+			for k := 0; k < m; k++ {
+				term := new(big.Int).Mul(A[i][k], B[k][j])
+				C[i][j].Add(C[i][j], term)
+				C[i][j].Mod(C[i][j], bn128.Order)
+			}
+		}
+	}
+	return C, nil
+}
 
 func Share(s *big.Int, AA *node.Node) ([]*big.Int, error) {
 	matrix := Convert(AA)
@@ -27,7 +59,7 @@ func Share(s *big.Int, AA *node.Node) ([]*big.Int, error) {
 		v2[i] = []*big.Int{vi}
 	}
 	shares := make([]*big.Int, matrixRows)
-	lambdas, _ := opmatrix.MultiplyMatrix(matrix, v2)
+	lambdas, _ := multiplyMatrix(matrix, v2)
 	for i, lambda := range lambdas {
 		shares[i] = lambda[0]
 	}
@@ -35,43 +67,150 @@ func Share(s *big.Int, AA *node.Node) ([]*big.Int, error) {
 }
 
 func Recon(AA *node.Node, shares []*big.Int, I []int) (*big.Int, error) {
-	rows := len(I)
-	// Prepare the sub-matrix for reconstruction
 	matrix := Convert(AA)
-	recMatrix := make([][]*big.Int, rows)
-	for i := 0; i < rows; i++ {
-		idx := I[i]
-		if idx >= len(matrix) {
-			return nil, fmt.Errorf("Index %d out of range (matrix has %d rows)", idx, len(matrix))
-		}
-		// Take the first 'rows' columns of the selected row
-		if len(matrix[idx]) < rows {
-			return nil, fmt.Errorf("Matrix row %d has insufficient columns (%d < %d)", idx, len(matrix[idx]), rows)
-		}
-		recMatrix[i] = matrix[idx][:rows]
-	}
-	// Compute Inverse Matrix
-	invRecMatrix, err := opmatrix.GaussJordanInverse(recMatrix)
+	weights, err := ReconstructionWeightsForRows(matrix, I)
 	if err != nil {
-		return nil, fmt.Errorf("Matrix inversion failed: %v", err)
+		return nil, err
 	}
-	one := make([][]*big.Int, 1)
-	one[0] = make([]*big.Int, rows)
-	for i := 0; i < rows; i++ {
-		one[0][i] = big.NewInt(0)
+	secret := big.NewInt(0)
+	for i, idx := range I {
+		if idx < 0 || idx >= len(shares) {
+			return nil, fmt.Errorf("share index %d out of range (shares has %d rows)", idx, len(shares))
+		}
+		if shares[idx] == nil {
+			return nil, fmt.Errorf("share at index %d is nil", idx)
+		}
+		term := new(big.Int).Mul(weights[i], shares[idx])
+		term.Mod(term, bn128.Order)
+		secret.Add(secret, term)
+		secret.Mod(secret, bn128.Order)
 	}
-	one[0][0] = big.NewInt(1)
-	w, _ := opmatrix.MultiplyMatrix(one, invRecMatrix)
-	shares2 := make([][]*big.Int, rows)
-	for i := 0; i < rows; i++ {
-		if shares[I[i]] == nil {
+	return secret, nil
+}
+
+func RecoverSecret(AA *node.Node, shares []*big.Int) (*big.Int, error) {
+	matrix := Convert(AA)
+	if len(matrix) == 0 || len(matrix[0]) == 0 {
+		return nil, fmt.Errorf("Matrix is empty")
+	}
+	if len(shares) != len(matrix) {
+		return nil, fmt.Errorf("share length mismatch: got %d, want %d", len(shares), len(matrix))
+	}
+	weights, err := ReconstructionWeights(matrix)
+	if err != nil {
+		return nil, err
+	}
+	secret := big.NewInt(0)
+	for i := 0; i < len(shares); i++ {
+		if shares[i] == nil {
 			return nil, fmt.Errorf("share at index %d is nil", i)
 		}
-		shares2[i] = []*big.Int{shares[I[i]]}
+		term := new(big.Int).Mul(weights[i], shares[i])
+		term.Mod(term, bn128.Order)
+		secret.Add(secret, term)
+		secret.Mod(secret, bn128.Order)
 	}
-	reconS, _ := opmatrix.MultiplyMatrix(w, shares2)
-	s := reconS[0][0]
-	return s, nil
+	return secret, nil
+}
+
+func ReconstructionWeights(matrix [][]*big.Int) ([]*big.Int, error) {
+	if len(matrix) == 0 || len(matrix[0]) == 0 {
+		return nil, fmt.Errorf("Matrix is empty")
+	}
+	n := len(matrix)
+	d := len(matrix[0])
+	aug := make([][]*big.Int, d)
+	for row := 0; row < d; row++ {
+		aug[row] = make([]*big.Int, n+1)
+		for col := 0; col < n; col++ {
+			aug[row][col] = new(big.Int).Set(matrix[col][row])
+			aug[row][col].Mod(aug[row][col], bn128.Order)
+		}
+		aug[row][n] = big.NewInt(0)
+		if row == 0 {
+			aug[row][n] = big.NewInt(1)
+		}
+	}
+
+	pivotCols := make([]int, 0, d)
+	pivotRows := make([]int, 0, d)
+	currentRow := 0
+	for col := 0; col < n && currentRow < d; col++ {
+		pivotRow := -1
+		for row := currentRow; row < d; row++ {
+			if aug[row][col].Sign() != 0 {
+				pivotRow = row
+				break
+			}
+		}
+		if pivotRow == -1 {
+			continue
+		}
+		if pivotRow != currentRow {
+			aug[currentRow], aug[pivotRow] = aug[pivotRow], aug[currentRow]
+		}
+		inv := new(big.Int).ModInverse(aug[currentRow][col], bn128.Order)
+		if inv == nil {
+			return nil, fmt.Errorf("matrix pivot is not invertible")
+		}
+		for k := col; k <= n; k++ {
+			aug[currentRow][k].Mul(aug[currentRow][k], inv)
+			aug[currentRow][k].Mod(aug[currentRow][k], bn128.Order)
+		}
+		for row := 0; row < d; row++ {
+			if row == currentRow || aug[row][col].Sign() == 0 {
+				continue
+			}
+			factor := new(big.Int).Set(aug[row][col])
+			for k := col; k <= n; k++ {
+				term := new(big.Int).Mul(factor, aug[currentRow][k])
+				term.Mod(term, bn128.Order)
+				aug[row][k].Sub(aug[row][k], term)
+				aug[row][k].Mod(aug[row][k], bn128.Order)
+			}
+		}
+		pivotCols = append(pivotCols, col)
+		pivotRows = append(pivotRows, currentRow)
+		currentRow++
+	}
+	for row := currentRow; row < d; row++ {
+		if aug[row][n].Sign() != 0 {
+			return nil, fmt.Errorf("target vector is not in the row span")
+		}
+	}
+	weights := make([]*big.Int, n)
+	for i := 0; i < n; i++ {
+		weights[i] = big.NewInt(0)
+	}
+	for i, col := range pivotCols {
+		weights[col] = new(big.Int).Set(aug[pivotRows[i]][n])
+	}
+	return weights, nil
+}
+
+func SelectedRows(matrix [][]*big.Int, I []int) ([][]*big.Int, error) {
+	if len(matrix) == 0 || len(matrix[0]) == 0 {
+		return nil, fmt.Errorf("Matrix is empty")
+	}
+	rows := make([][]*big.Int, len(I))
+	for i, idx := range I {
+		if idx < 0 || idx >= len(matrix) {
+			return nil, fmt.Errorf("Index %d out of range (matrix has %d rows)", idx, len(matrix))
+		}
+		rows[i] = make([]*big.Int, len(matrix[idx]))
+		for j := range matrix[idx] {
+			rows[i][j] = new(big.Int).Set(matrix[idx][j])
+		}
+	}
+	return rows, nil
+}
+
+func ReconstructionWeightsForRows(matrix [][]*big.Int, I []int) ([]*big.Int, error) {
+	rows, err := SelectedRows(matrix, I)
+	if err != nil {
+		return nil, err
+	}
+	return ReconstructionWeights(rows)
 }
 
 func GrpShare(S *bn128.G1, AA *node.Node) ([]*bn128.G1, error) {
@@ -92,7 +231,7 @@ func GrpShare(S *bn128.G1, AA *node.Node) ([]*bn128.G1, error) {
 		v2[i] = []*big.Int{vi}
 	}
 	shares := make([]*bn128.G1, matrixRows)
-	lambdas, _ := opmatrix.MultiplyMatrix(matrix, v2)
+	lambdas, _ := multiplyMatrix(matrix, v2)
 	for i, lambda := range lambdas {
 		shares[i] = new(bn128.G1).ScalarMult(S, lambda[0])
 	}
@@ -100,39 +239,30 @@ func GrpShare(S *bn128.G1, AA *node.Node) ([]*bn128.G1, error) {
 }
 
 func GrpRecon(AA *node.Node, recoverShares []*bn128.G1, I []int) (*bn128.G1, error) {
-	rows := len(I)
-	// Prepare the sub-matrix for reconstruction
-	matrix1 := Convert(AA)
-	recMatrix := make([][]*big.Int, rows)
-	for i := 0; i < rows; i++ {
-		idx := I[i]
-		if idx >= len(matrix1) {
-			return nil, fmt.Errorf("Index %d out of range (matrix has %d rows)", idx, len(matrix1))
-		}
-		// Take the first 'rows' columns of the selected row
-		if len(matrix1[idx]) < rows {
-			return nil, fmt.Errorf("Matrix row %d has insufficient columns (%d < %d)", idx, len(matrix1[idx]), rows)
-		}
-		recMatrix[i] = matrix1[idx][:rows]
-	}
-	// Compute Inverse Matrix
-	invRecMatrix, err := opmatrix.GaussJordanInverse(recMatrix)
+	matrix := Convert(AA)
+	weights, err := ReconstructionWeightsForRows(matrix, I)
 	if err != nil {
-		return nil, fmt.Errorf("Matrix inversion failed: %v", err)
+		return nil, err
 	}
-	one := make([][]*big.Int, 1)
-	one[0] = make([]*big.Int, rows)
-	for i := 0; i < rows; i++ {
-		one[0][i] = big.NewInt(0)
+	return GrpReconWithWeights(recoverShares, I, weights)
+}
+
+func GrpReconWithWeights(recoverShares []*bn128.G1, I []int, weights []*big.Int) (*bn128.G1, error) {
+	if len(weights) != len(I) {
+		return nil, fmt.Errorf("reconstruction weight length mismatch: got %d, want %d", len(weights), len(I))
 	}
-	one[0][0] = big.NewInt(1)
-	w, _ := opmatrix.MultiplyMatrix(one, invRecMatrix)
+	if len(recoverShares) < len(I) {
+		return nil, fmt.Errorf("recover share length mismatch: got %d, want at least %d", len(recoverShares), len(I))
+	}
 	reconS := new(bn128.G1).ScalarBaseMult(big.NewInt(0)) // Identity point
-	for i := 0; i < rows; i++ {
+	for i := range I {
+		if i >= len(recoverShares) {
+			return nil, fmt.Errorf("recover share index %d out of range (shares has %d rows)", i, len(recoverShares))
+		}
 		if recoverShares[i] == nil {
 			return nil, fmt.Errorf("share at index %d is nil", i)
 		}
-		term := new(bn128.G1).ScalarMult(recoverShares[i], w[0][i])
+		term := new(bn128.G1).ScalarMult(recoverShares[i], weights[i])
 		reconS.Add(reconS, term)
 	}
 	return reconS, nil
@@ -228,10 +358,12 @@ func Convert(F_A *node.Node) [][]*big.Int {
 				for v := 0; v < d1; v++ {
 					M[u][v] = M1[z-1][v]
 				}
-				a, x := (u+1)-(z-1), (u+1)-(z-1)
+				a := big.NewInt(int64((u + 1) - (z - 1)))
+				x := new(big.Int).Set(a)
 				for v := d1; v < d1+d2-1; v++ {
-					M[u][v] = big.NewInt(int64(x))
-					x = (x * a) % 1000000000000000000
+					M[u][v] = new(big.Int).Set(x)
+					x.Mul(x, a)
+					x.Mod(x, bn128.Order)
 				}
 			}
 

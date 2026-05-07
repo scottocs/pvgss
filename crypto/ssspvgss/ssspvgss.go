@@ -9,7 +9,7 @@ import (
 	"math/big"
 	bn128 "pvgss/bn128"
 	"pvgss/crypto/dleq"
-	"pvgss/crypto/gssreconwithvrf"
+	"pvgss/crypto/gsstesting"
 	"pvgss/crypto/node"
 	gss "pvgss/crypto/ssspvgss/gss"
 )
@@ -34,11 +34,10 @@ func H(C, Cp []*bn128.G1) *big.Int {
 	return hashBigInt
 }
 
-func PVGSSSetup() (*big.Int, *bn128.G1, *bn128.G2) {
+func PVGSSSetup() (*big.Int, *bn128.G1) {
 	sk, _ := rand.Int(rand.Reader, bn128.Order)
 	pk1 := new(bn128.G1).ScalarBaseMult(sk)
-	pk2 := new(bn128.G2).ScalarBaseMult(sk)
-	return sk, pk1, pk2
+	return sk, pk1
 }
 
 func PVGSSShare(s *big.Int, AA *node.Node, PK []*bn128.G1) ([]*bn128.G1, *Proof, error) {
@@ -74,10 +73,19 @@ func PVGSSShare(s *big.Int, AA *node.Node, PK []*bn128.G1) ([]*bn128.G1, *Proof,
 	return C, prfs, nil
 }
 
-// 1.Invokes gssreconwithvrf
-// 2.Selects an authorized set to recover
-func PVGSSVerify(C []*bn128.G1, prfs *Proof, root *node.Node, PK []*bn128.G1, AA *node.Node, I []int) (bool, error) {
+func PVGSSVerify(C []*bn128.G1, prfs *Proof, root *node.Node, PK []*bn128.G1) (bool, error) {
+	return verifyWithGSSTest(C, prfs, root, PK, gsstesting.GSSTest)
+}
 
+func PVGSSVerifyExact(C []*bn128.G1, prfs *Proof, root *node.Node, PK []*bn128.G1) (bool, error) {
+	return verifyWithGSSTest(C, prfs, root, PK, gsstesting.GSSTestExact)
+}
+
+func PVGSSVerifyDual(C []*bn128.G1, prfs *Proof, root *node.Node, PK []*bn128.G1) (bool, error) {
+	return verifyWithGSSTest(C, prfs, root, PK, gsstesting.GSSTestDual)
+}
+
+func verifyWithGSSTest(C []*bn128.G1, prfs *Proof, root *node.Node, PK []*bn128.G1, gssTest func(*node.Node, []*big.Int) (*big.Int, bool, error)) (bool, error) {
 	for i := 0; i < len(C); i++ {
 		left := prfs.Cp[i]
 		temp1 := new(bn128.G1).ScalarMult(C[i], prfs.Xc)
@@ -87,43 +95,12 @@ func PVGSSVerify(C []*bn128.G1, prfs *Proof, root *node.Node, PK []*bn128.G1, AA
 			return false, fmt.Errorf("check nizk proof fails")
 		}
 	}
-	//Firstly, Check if the share comes from the claimed access structure.
-	//Method 1:
-	// Restore the polynomial layer by layer from bottom to top
-	// Each polynomial is used to verify last n-t child nodes.
-	verGSSRP, _ := gssreconwithvrf.ReconPolynomial(root, prfs.Shatarry)
-	if !verGSSRP {
-		fmt.Printf("No Pass ReconPolynomial Test!!!\n")
-		return false, nil
-	}
-	//Method 2:
-	// Excute RSCode Verification by layer from bottom to top
-	verGSSRS, _ := gssreconwithvrf.ReconPolynomial(root, prfs.Shatarry)
-	if !verGSSRS {
-		fmt.Printf("No Pass RSCode Test!!!\n")
-		return false, nil
-	}
-	//Method 3.1:
-	//Generate a global sparse parity check matrix H through recursively process each non-leaf node
-	//Calculate the sparse matrix
-	// verSPMatrix, _ := gssreconwithvrf.GenerateSparseMatrix(root)
-	// //opmatrix.PrintMatrix(verSPMatrix)
-	// //Transfer secret shares as shares matrix with 1 column
-	// gsssharesMatrix := opmatrix.SetToMatrix(prfs.Shatarry)
-	// resultSPMatrix, _ := opmatrix.MultiplyMatrix(verSPMatrix, gsssharesMatrix)
-	// if !opmatrix.IsZeroMatrixMod(resultSPMatrix) {
-	// 	fmt.Printf("No Pass Sparse Matrix Test!!!\n")
-	// 	return false, nil
-	// }
-
-	//Secondly, an authorized set is used to recover
-	Q := make([]*big.Int, len(I))
-	for i := 0; i < len(I); i++ {
-		Q[i] = prfs.Shatarry[I[i]]
-	}
-	recoverShat, _, err := gss.GSSRecon(AA, Q)
+	recoverShat, valid, err := gssTest(root, prfs.Shatarry)
 	if err != nil {
-		return false, fmt.Errorf("GSSRecon fails")
+		return false, fmt.Errorf("GSS testing fails: %w", err)
+	}
+	if !valid {
+		return false, fmt.Errorf("GSS testing rejects the proof responses")
 	}
 	if prfs.Shat.Cmp(recoverShat) != 0 {
 		return false, fmt.Errorf("reconstruct shat dont match")

@@ -11,7 +11,6 @@ import (
 	"pvgss/crypto/dleq"
 	"pvgss/crypto/lssspvgss"
 	"pvgss/crypto/lssspvgss/lsss"
-	"pvgss/crypto/lssspvgss/opmatrix"
 	"pvgss/crypto/node"
 	"pvgss/crypto/ssspvgss"
 	"pvgss/utils"
@@ -50,15 +49,14 @@ func TestDexGasLSSS(t *testing.T) {
 
 	allSK := make([]*big.Int, accountNum)
 	allPK1 := make([]*bn128.G1, accountNum)
-	allPK2 := make([]*bn128.G2, accountNum)
 	for i := 0; i < accountNum; i++ {
-		allSK[i], allPK1[i], allPK2[i] = ssspvgss.PVGSSSetup()
+		allSK[i], allPK1[i] = ssspvgss.PVGSSSetup()
 	}
 	if err != nil {
 		log.Fatalf("Failed to load accounts: %v", err)
 	}
 
-	dex_contract_address, pveth_contract_address, pvusdt_contract_address, _ := utils.DeployAndRegister(allPK1, allPK2)
+	dex_contract_address, pveth_contract_address, pvusdt_contract_address, _ := utils.DeployAndRegister(allPK1)
 	client, err := ethclient.Dial("ws://127.0.0.1:8545")
 	if err != nil {
 		log.Fatalf("Failed to connect to the Ethereum client: %v, %v", err, client)
@@ -122,12 +120,10 @@ func TestDexGasLSSS(t *testing.T) {
 
 		SK := make([]*big.Int, accountNum)
 		PK1 := make([]*bn128.G1, accountNum)
-		PK2 := make([]*bn128.G2, accountNum)
 
 		for i := 0; i < accountNum; i++ {
 			SK[i] = allSK[i]
 			PK1[i] = allPK1[i]
-			PK2[i] = allPK2[i]
 		}
 
 		matrix := lsss.Convert(root)
@@ -139,12 +135,7 @@ func TestDexGasLSSS(t *testing.T) {
 		I0 := make([]int, 2)
 		I0[0] = 0
 		I0[1] = 1
-		rows0 := len(I0)
-		recMatrix0 := make([][]*big.Int, rows0)
-		for i := 0; i < rows0; i++ {
-			recMatrix0[i] = matrix[I0[i]][:rows0]
-		}
-		invRecMatrix0, _ := opmatrix.GaussJordanInverse(recMatrix0)
+		weights0, _ := lsss.ReconstructionWeightsForRows(matrix, I0)
 
 		// A and Watchers
 		I00 := make([]int, 1+t)
@@ -152,15 +143,13 @@ func TestDexGasLSSS(t *testing.T) {
 		for i := 0; i < t; i++ {
 			I00[i+1] = i + 2
 		}
-		rows := len(I00)
-		recMatrix := make([][]*big.Int, rows)
-		for i := 0; i < rows; i++ {
-			recMatrix[i] = matrix[I00[i]][:rows]
-		}
-		invRecMatrix, _ := opmatrix.GaussJordanInverse(recMatrix)
-		_, _ = lssspvgss.PVGSSVerify(lC, lprfs, root, root, PK1, I0)
+		weights, _ := lsss.ReconstructionWeightsForRows(matrix, I00)
+		_, _ = lssspvgss.PVGSSVerify(lC, lprfs, root, PK1)
 
 		//fmt.Println("Off-chain Shares verification result = ", lisShareValid)
+		authPath := utils.Transact(client, privateKeys[0], big.NewInt(0))
+		txPath, _ := dexInstance.CreatePath(authPath, big.NewInt(int64(nx)), big.NewInt(int64(t)), big.NewInt(4))
+		_, _ = bind.WaitMined(context.Background(), client, txPath)
 
 		// 4. PVGSSPreRecon
 		ldecShares := make([]*bn128.G1, num)
@@ -185,7 +174,7 @@ func TestDexGasLSSS(t *testing.T) {
 		// log.Println("On-chain LUploadProof Gas cost = ", receipt.GasUsed)
 
 		auth10 := utils.Transact(client, privateKeys[1], big.NewInt(0))
-		tx10, _ := dexInstance.Lswap1(auth10, orderId, utils.G1sToPoints(num, lprfs.Cp), lprfs.Xc, lprfs.Shat, lprfs.Shatarry, utils.G1sToPoints(num, lC), utils.G1sToPoints(num, PK1), invRecMatrix0, invRecMatrix, utils.IntToBig(I0), utils.IntToBig(I00))
+		tx10, _ := dexInstance.Lswap1(auth10, orderId, utils.G1sToPoints(num, lprfs.Cp), lprfs.Xc, lprfs.Shat, lprfs.Shatarry, utils.G1sToPoints(num, lC), utils.G1sToPoints(num, PK1), weights0, weights, utils.IntToBig(I0), utils.IntToBig(I00))
 		receipt, _ := bind.WaitMined(context.Background(), client, tx10)
 		log.Println("On-chain LSwap1 Gas cost = ", receipt.GasUsed)
 
@@ -199,7 +188,7 @@ func TestDexGasLSSS(t *testing.T) {
 		// log.Println("On-chain LUploadProof Gas cost = ", receipt.GasUsed)
 
 		auth := utils.Transact(client, privateKeys[0], big.NewInt(0))
-		tx, _ := dexInstance.Lswap1(auth, orderId, utils.G1sToPoints(num, lprfs.Cp), lprfs.Xc, lprfs.Shat, lprfs.Shatarry, utils.G1sToPoints(num, lC), utils.G1sToPoints(num, PK1), invRecMatrix0, invRecMatrix, utils.IntToBig(I0), utils.IntToBig(I00))
+		tx, _ := dexInstance.Lswap1(auth, orderId, utils.G1sToPoints(num, lprfs.Cp), lprfs.Xc, lprfs.Shat, lprfs.Shatarry, utils.G1sToPoints(num, lC), utils.G1sToPoints(num, PK1), weights0, weights, utils.IntToBig(I0), utils.IntToBig(I00))
 		receipt, _ = bind.WaitMined(context.Background(), client, tx)
 		log.Println("On-chain LSwap1 Gas cost = ", receipt.GasUsed)
 
@@ -283,19 +272,17 @@ func TestDexGasSSS(t *testing.T) {
 	}
 
 	accountNum := 20
-	// allSK, allPK1, allPK2, err := utils.LoadAccountsFromEnv(accountNum)
 
 	allSK := make([]*big.Int, accountNum)
 	allPK1 := make([]*bn128.G1, accountNum)
-	allPK2 := make([]*bn128.G2, accountNum)
 	for i := 0; i < accountNum; i++ {
-		allSK[i], allPK1[i], allPK2[i] = ssspvgss.PVGSSSetup()
+		allSK[i], allPK1[i] = ssspvgss.PVGSSSetup()
 	}
 	if err != nil {
 		log.Fatalf("Failed to load accounts: %v", err)
 	}
 
-	dex_contract_address, pveth_contract_address, pvusdt_contract_address, _ := utils.DeployAndRegister(allPK1, allPK2)
+	dex_contract_address, pveth_contract_address, pvusdt_contract_address, _ := utils.DeployAndRegister(allPK1)
 
 	client, err := ethclient.Dial("ws://127.0.0.1:8545")
 	if err != nil {
@@ -356,23 +343,14 @@ func TestDexGasSSS(t *testing.T) {
 
 		SK := make([]*big.Int, accountNum)
 		PK1 := make([]*bn128.G1, accountNum)
-		PK2 := make([]*bn128.G2, accountNum)
 
 		for i := 0; i < accountNum; i++ {
 			SK[i] = allSK[i]
 			PK1[i] = allPK1[i]
-			PK2[i] = allPK2[i]
 		}
 
 		// 2. PVGSSShare
 		C, prfs, _ := ssspvgss.PVGSSShare(secret, root, PK1)
-
-		// Off-chain: construct paths that satisfy the access control structure
-		I := make([]int, nx+2)
-		// I[0] = 0
-		for i := 0; i < nx+2; i++ {
-			I[i] = i
-		}
 
 		// On-chain: construct the access control structure
 		// On-chain: construct paths that satisfy the access control structure
@@ -389,7 +367,7 @@ func TestDexGasSSS(t *testing.T) {
 
 		// 3. PVGSSVerify
 		// Off-chain
-		isShareValid, _ := ssspvgss.PVGSSVerify(C, prfs, root, PK1, root, I)
+		isShareValid, _ := ssspvgss.PVGSSVerify(C, prfs, root, PK1)
 
 		log.Println("Off-chain Verification result = ", isShareValid)
 

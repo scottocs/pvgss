@@ -31,11 +31,10 @@ func TestSSSPVGSS(t *testing.T) {
 	}
 	X.Children = Xp
 
-	//Authorized Set
+	// Authorized sets for reconstruction.
 	//1) Alice and Bob
 	path1 := node.NewNode(false, 2, 2, big.NewInt(int64(0)))
 	path1.Children = []*node.Node{A, B}
-	I1 := []int{0, 1}
 	//2) Alice and Watchers
 	path2 := node.NewNode(false, 2, 2, big.NewInt(int64(0)))
 	reconX := node.NewNode(false, tx, tx, big.NewInt(int64(3)))
@@ -52,9 +51,8 @@ func TestSSSPVGSS(t *testing.T) {
 	// 1. Setup
 	SK := make([]*big.Int, num)
 	PK1 := make([]*bn128.G1, num)
-	PK2 := make([]*bn128.G2, num)
 	for i := 0; i < num; i++ {
-		SK[i], PK1[i], PK2[i] = PVGSSSetup()
+		SK[i], PK1[i] = PVGSSSetup()
 	}
 
 	// 2. Share
@@ -64,8 +62,8 @@ func TestSSSPVGSS(t *testing.T) {
 		t.Fatalf("pvgss failed to share: %v\n", err)
 	}
 
-	//3. Verify all PVGSS shares via gssreconwithvrf
-	isShareValid, err := PVGSSVerify(C, prfs, root, PK1, path1, I1)
+	//3. Verify all PVGSS shares via GSS testing
+	isShareValid, err := PVGSSVerify(C, prfs, root, PK1)
 	if err != nil || isShareValid == false {
 		t.Fatalf("pvgss share verify failed: %v\n", err)
 	}

@@ -20,7 +20,6 @@ import (
 
 	"pvgss/crypto/dleq"
 	"pvgss/crypto/lssspvgss/lsss"
-	"pvgss/crypto/lssspvgss/opmatrix"
 
 	lssspvgss "pvgss/crypto/lssspvgss"
 	"pvgss/crypto/node"
@@ -64,24 +63,6 @@ func IntToBig(array []int) []*big.Int {
 	return bigArray
 }
 
-func G2ToPoint(point *bn128.G2) contract.DexG2Point {
-	// Marshal the G1 point to get the X and Y coordinates as bytes
-	pointBytes := point.Marshal()
-	//fmt.Println(point.Marshal())
-
-	// Create big.Int for X and Y coordinates
-	a1 := new(big.Int).SetBytes(pointBytes[:32])
-	a2 := new(big.Int).SetBytes(pointBytes[32:64])
-	b1 := new(big.Int).SetBytes(pointBytes[64:96])
-	b2 := new(big.Int).SetBytes(pointBytes[96:128])
-
-	g2Point := contract.DexG2Point{
-		X: [2]*big.Int{a1, a2},
-		Y: [2]*big.Int{b1, b2},
-	}
-	return g2Point
-}
-
 func main() {
 
 	contract_name := "Dex"
@@ -122,14 +103,13 @@ func main() {
 	// Key Pairs
 	SK := make([]*big.Int, num)
 	PK1 := make([]*bn128.G1, num)
-	PK2 := make([]*bn128.G2, num)
 
 	// //========================================= PVGSS-LSSS Test =========================================
 	fmt.Print("============================= PVGSS-LSSS Test =============================\n")
 
 	// 1. PVGSSSetup
 	for i := 0; i < num; i++ {
-		SK[i], PK1[i], PK2[i] = lssspvgss.PVGSSSetup()
+		SK[i], PK1[i] = lssspvgss.PVGSSSetup()
 	}
 
 	matrix := lsss.Convert(root)
@@ -141,12 +121,7 @@ func main() {
 	I0 := make([]int, 2)
 	I0[0] = 0
 	I0[1] = 1
-	rows0 := len(I0)
-	recMatrix0 := make([][]*big.Int, rows0)
-	for i := 0; i < rows0; i++ {
-		recMatrix0[i] = matrix[I0[i]][:rows0]
-	}
-	invRecMatrix0, _ := opmatrix.GaussJordanInverse(recMatrix0)
+	weights0, _ := lsss.ReconstructionWeightsForRows(matrix, I0)
 
 	// A and Watchers
 	I00 := make([]int, 1+tx)
@@ -154,13 +129,8 @@ func main() {
 	for i := 0; i < tx; i++ {
 		I00[i+1] = i + 2
 	}
-	rows := len(I00)
-	recMatrix := make([][]*big.Int, rows)
-	for i := 0; i < rows; i++ {
-		recMatrix[i] = matrix[I00[i]][:rows]
-	}
-	invRecMatrix, _ := opmatrix.GaussJordanInverse(recMatrix)
-	lisShareValid, _ := lssspvgss.PVGSSVerify(lC, lprfs, root, root, PK1, I0)
+	weights, _ := lsss.ReconstructionWeightsForRows(matrix, I00)
+	lisShareValid, _ := lssspvgss.PVGSSVerify(lC, lprfs, root, PK1)
 
 	fmt.Println("Off-chain Shares verification result = ", lisShareValid)
 
@@ -168,7 +138,7 @@ func main() {
 	// Input : Secret share(lC), public key(PK1), LSSS matrix, user for verification (I0), where 0 denotes Alic, 1 denotes Bob, and 2 ∼ nx + 2 denotes Watchers
 
 	auth22 := utils.Transact(client, privatekey1, big.NewInt(0))
-	tx22, _ := ctc.LSSSPVGSSVerify(auth22, G1sToPoints(num, lprfs.Cp), lprfs.Xc, lprfs.Shat, lprfs.Shatarry, G1sToPoints(num, lC), G1sToPoints(num, PK1), invRecMatrix0, invRecMatrix, IntToBig(I0), IntToBig(I00))
+	tx22, _ := ctc.LSSSPVGSSVerify(auth22, G1sToPoints(num, lprfs.Cp), lprfs.Xc, lprfs.Shat, lprfs.Shatarry, G1sToPoints(num, lC), G1sToPoints(num, PK1), weights0, weights, IntToBig(I0), IntToBig(I00))
 	receipt22, _ := bind.WaitMined(context.Background(), client, tx22)
 	fmt.Println("On-chain Shares verification Gas cost = ", receipt22.GasUsed)
 
@@ -209,19 +179,11 @@ func main() {
 	fmt.Print("============================= PVGSS-SSS Test =============================\n")
 	// 1. PVGSSSetup
 	for i := 0; i < num; i++ {
-		SK[i], PK1[i], PK2[i] = ssspvgss.PVGSSSetup()
+		SK[i], PK1[i] = ssspvgss.PVGSSSetup()
 	}
 
 	// 2. PVGSSShare
 	C, prfs, _ := ssspvgss.PVGSSShare(secret, root, PK1)
-
-	// Off-chain: construct paths that satisfy the access control structure
-	// Case1: A and B
-	path1 := node.NewNode(false, 2, 2, big.NewInt(int64(0)))
-	path1.Children = []*node.Node{A, B}
-	I1 := make([]int, 2)
-	I1[0] = 0
-	I1[1] = 1
 
 	// A and B and Watchers
 	auth1_4 := utils.Transact(client, privatekey1, big.NewInt(0))
@@ -236,7 +198,7 @@ func main() {
 
 	// 3. PVGSSVerify
 	// Off-chain
-	isShareValid, _ := ssspvgss.PVGSSVerify(C, prfs, root, PK1, path1, I1)
+	isShareValid, _ := ssspvgss.PVGSSVerify(C, prfs, root, PK1)
 
 	fmt.Println("Off-chain Shares verification result = ", isShareValid)
 

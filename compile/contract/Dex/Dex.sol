@@ -29,11 +29,6 @@ contract Dex
 	}
 
 	// Encoding of field elements is: X[0] * z + X[1]
-	struct G2Point {
-		uint[2] X;
-		uint[2] Y;
-	}
-
     G1Point G1 = G1Point(1, 2);
 	/// return the sum of two points of G1
 	function g1add(G1Point memory p1, G1Point memory p2) view internal returns (G1Point memory r) {
@@ -218,6 +213,7 @@ contract Dex
         uint256 nodeId = parentIdx * 100 + idx;
         Node storage newNode = nodes[nodeId];
         newNode.IsLeaf = isLeaf;
+        delete newNode.Children;
         newNode.ChildrenNum = childNum;
         newNode.T = t;
         newNode.Idx = idx;
@@ -234,7 +230,7 @@ contract Dex
         }
     }
 
-    //======================================GssReconWithVrf================================//
+    //======================================GSS Testing================================//
     //===========Method 1============
    function ReconPolynomial(uint256 rootNodeId, uint256[] memory shares) public view returns (bool success) {
         Node memory AA = nodes[rootNodeId];
@@ -285,20 +281,17 @@ contract Dex
             sharesVal[i] = childSecrets[i];
         }
 
-        uint256[] memory coefficients = reconCoefficient(sharesVal);
+        secret = interpolateAt(sharesVal, 0);
 
         for(uint256 i = AA.T; i < childSecrets.length; i++) {
             uint256 expectedVal = childSecrets[i];
-            uint256 xVal = i + 1;
-
-            uint256 calculatedVal = evaluatePolynomial(xVal, coefficients);
+            uint256 calculatedVal = interpolateAt(sharesVal, i + 1);
 
             if (expectedVal != calculatedVal) {
                 return (0, 0, false);
             }
         }
         
-        secret = coefficients[0];
         consumed = currentOffset - offset;
         return (consumed, secret, true);
     }
@@ -404,15 +397,7 @@ contract Dex
             sharesForRecon[i] = childSecrets[i];
         }
         
-        // 重构多项式系数
-        uint256[] memory coefficients;
-        try this.reconCoefficient(sharesForRecon) returns (uint256[] memory coeffs) {
-            coefficients = coeffs;
-        } catch {
-            return (0, 0, false); // Reconstruction failed
-        }
-        
-        secret = coefficients[0]; // 常数项是秘密值
+        secret = interpolateAt(sharesForRecon, 0);
         consumed = currentOffset - offset;
         success = true;
         
@@ -439,26 +424,23 @@ contract Dex
                 fCoeffs[i] = uint256(keccak256(abi.encodePacked(seed, i))) % GEN_ORDER;
             }
 
-            uint256[] memory cPerp = new uint256[](n);
+            uint256[] memory factorial = new uint256[](n);
+            factorial[0] = 1;
+            for (uint256 i = 1; i < n; i++) {
+                factorial[i] = mulmod(factorial[i - 1], i, GEN_ORDER);
+            }
 
+            uint256 innerProduct = 0;
             for (uint256 i = 0; i < n; i++) {
                 uint256 x_i = i + 1;
-                uint256 denom = 1;
-                for (uint256 j = 0; j < n; j++) {
-                    if (i == j) continue;
-                    uint256 x_j = j + 1;
-                    uint256 diff = submod2(x_j, x_i, GEN_ORDER); // (x_j - x_i) mod p
-                    denom = mulmod(denom, diff, GEN_ORDER);
+                uint256 denom = mulmod(factorial[i], factorial[n - 1 - i], GEN_ORDER);
+                if (i % 2 == 1) {
+                    denom = submod2(0, denom, GEN_ORDER);
                 }
 
                 uint256 v_i = _modInv(denom, GEN_ORDER);
                 uint256 fVal = evaluatePolynomial(x_i, fCoeffs); 
-                cPerp[i] = mulmod(v_i, fVal, GEN_ORDER);
-            }
-            uint256 innerProduct = 0;
-            for (uint256 i = 0; i < n; i++) {
-                if (cPerp[i] == 0) continue;
-                uint256 term = mulmod(shares[i], cPerp[i], GEN_ORDER);
+                uint256 term = mulmod(shares[i], mulmod(v_i, fVal, GEN_ORDER), GEN_ORDER);
                 innerProduct = addmod(innerProduct, term, GEN_ORDER);
             }
 
@@ -466,6 +448,11 @@ contract Dex
     }
 
     function interpolate(uint256[] memory points) 
+        internal view returns (uint256 secret) {
+            return interpolateAt(points, 0);
+    }
+
+    function interpolateAt(uint256[] memory points, uint256 target) 
         internal view returns (uint256 secret) {
             uint k = points.length;
             require(k > 0, "no points provided");
@@ -479,14 +466,8 @@ contract Dex
                 for (uint j = 0; j < k; j++) {
                     if (i == j) continue;
                     uint x_j = j + 1;
-                    num = mulmod(num, GEN_ORDER - x_j, GEN_ORDER);
-                    uint diff;
-                    if (x_i > x_j) {
-                        diff = x_i - x_j;
-                    } else {
-                        diff = x_i + GEN_ORDER - x_j;
-                    }
-                    den = mulmod(den, diff, GEN_ORDER);
+                    num = mulmod(num, submod2(target, x_j, GEN_ORDER), GEN_ORDER);
+                    den = mulmod(den, submod2(x_i, x_j, GEN_ORDER), GEN_ORDER);
                 }   
 
                 uint denInv = _modInv(den, GEN_ORDER);
@@ -581,6 +562,19 @@ contract Dex
 
     // ===== PVGSS-SSS Verification =====
     function PVGSSVerify(G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray,G1Point[] memory C,G1Point[] memory PK, uint256[] memory I) public payable returns (bool) {
+        return _PVGSSVerify(cp, xc, shat, shatArray, C, PK, I, false);
+    }
+
+    function PVGSSVerifyDual(G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray,G1Point[] memory C,G1Point[] memory PK, uint256[] memory I) public payable returns (bool) {
+        return _PVGSSVerify(cp, xc, shat, shatArray, C, PK, I, true);
+    }
+
+    function _PVGSSVerify(G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray,G1Point[] memory C,G1Point[] memory PK, uint256[] memory I, bool useDualTest) internal returns (bool) {
+        bool gssVerified = useDualTest ? RecurRSCode(0, shatArray) : ReconPolynomial(0, shatArray);
+        if (!gssVerified){
+            VerifyResult.push(false);
+            return false;
+        }
         uint256 nodeId = 0;
         uint256 startIdx = 0;
         uint256[] memory Q = new uint256[](I.length);
@@ -671,14 +665,19 @@ contract Dex
         return LSSSVerifyResult;
     }
 
-    function LSSSPVGSSVerify(G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray,G1Point[] memory C,G1Point[] memory PK, uint256[][] memory invmatrix, uint256[][] memory invmatrix1 ,uint256[] memory I, uint256[] memory I1) public payable returns (bool) {
-        if (!RecurRSCode(0, shatArray)){
-            LSSSVerifyResult.push(false);
-            return false;           
-        }       
-        if (!ReconPolynomial(0, shatArray)){
-            LSSSVerifyResult.push(false);
-            return false;           
+    function LSSSPVGSSVerify(G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray,G1Point[] memory C,G1Point[] memory PK, uint256[] memory weights, uint256[] memory weights1 ,uint256[] memory I, uint256[] memory I1) public payable returns (bool) {
+         return _LSSSPVGSSVerify(cp, xc, shat, shatArray, C, PK, weights, weights1, I, I1, false);
+     }
+
+    function LSSSPVGSSVerifyDual(G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray,G1Point[] memory C,G1Point[] memory PK, uint256[] memory weights, uint256[] memory weights1 ,uint256[] memory I, uint256[] memory I1) public payable returns (bool) {
+         return _LSSSPVGSSVerify(cp, xc, shat, shatArray, C, PK, weights, weights1, I, I1, true);
+     }
+
+    function _LSSSPVGSSVerify(G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray,G1Point[] memory C,G1Point[] memory PK, uint256[] memory weights, uint256[] memory weights1 ,uint256[] memory I, uint256[] memory I1, bool useDualTest) internal returns (bool) {
+         bool gssVerified = useDualTest ? RecurRSCode(0, shatArray) : ReconPolynomial(0, shatArray);
+         if (!gssVerified){
+             LSSSVerifyResult.push(false);
+             return false;
          }
          for(uint i = 0; i < shatArray.length;i++) {
              G1Point memory right = g1add(g1mul(C[i],xc),g1mul(PK[i],shatArray[i]));
@@ -687,12 +686,12 @@ contract Dex
                  return false;
              }
          }
-         uint256 recovershat = LSSSRecon(invmatrix,shatArray,I);
+         uint256 recovershat = LSSSRecon(weights,shatArray,I);
          if (shat != recovershat) {
              LSSSVerifyResult.push(false);
              return false;
          }
-         uint256 recovershat1 = LSSSRecon(invmatrix1,shatArray,I1);
+         uint256 recovershat1 = LSSSRecon(weights1,shatArray,I1);
          if (shat != recovershat1) {
              LSSSVerifyResult.push(false);
              return false;
@@ -702,12 +701,12 @@ contract Dex
      }
 
      // LSSSRecon
-     // change matrix to invRecMatrix
-	     function LSSSRecon(uint256[][] memory invRecMatrix, uint256[] memory shares, uint256[] memory I) public pure returns (uint256) {
+	     function LSSSRecon(uint256[] memory weights, uint256[] memory shares, uint256[] memory I) public pure returns (uint256) {
 	         uint256 rows = I.length;
+             require(weights.length == rows, "invalid reconstruction weights");
 	         uint256 reconS = 0;
 	         for(uint256 i = 0; i < rows; i++) {
-	             reconS = addmod(reconS, mulmod(invRecMatrix[0][i], shares[I[i]], GEN_ORDER), GEN_ORDER);
+	             reconS = addmod(reconS, mulmod(weights[i], shares[I[i]], GEN_ORDER), GEN_ORDER);
 	         }
 	         return reconS;
 	     }
@@ -782,8 +781,6 @@ contract Dex
 
     mapping(bytes32 => address) public pubkeyhashToAddress;
 
-    mapping(address => G2Point) private pubkey2;
-
     uint constant MINIMAL_EXCHANGER_STAKE = 1 ether; 
     uint constant MINIMAL_WATCHER_STAKE = 1 ether; 
 
@@ -838,10 +835,9 @@ contract Dex
     }
 
     //register pubkey
-    function register(G1Point memory _pubkey1, G2Point memory _pubkey2) external {
+    function register(G1Point memory _pubkey1) external {
         pubkey1[msg.sender] = _pubkey1;
         pubkeyhashToAddress[g1PointToBytes32(_pubkey1)] = msg.sender;
-        pubkey2[msg.sender] = _pubkey2;
     }
 
     // Deposit ERC20 tokens into the contract
@@ -971,6 +967,14 @@ contract Dex
 
     //session swap1: shares validity check
     function swap1(uint256 id, G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray,G1Point[] memory C, G1Point[] memory PK, uint256[] memory I) external onlyExchanger(id){
+        _swap1(id, cp, xc, shat, shatArray, C, PK, I, false);
+    }
+
+    function swap1Dual(uint256 id, G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray,G1Point[] memory C, G1Point[] memory PK, uint256[] memory I) external onlyExchanger(id){
+        _swap1(id, cp, xc, shat, shatArray, C, PK, I, true);
+    }
+
+    function _swap1(uint256 id, G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray,G1Point[] memory C, G1Point[] memory PK, uint256[] memory I, bool useDualTest) internal {
         Session storage session = sessions[id];
 
         // Check session state
@@ -982,7 +986,7 @@ contract Dex
         // Check stake
         require(stakedETH[msg.sender] >= MINIMAL_EXCHANGER_STAKE, "Insufficient stake");
         // Check validity of shares PVGSSVerify()
-        require(PVGSSVerify(cp, xc, shat, shatArray, C, PK, I) == true, "pvgss verify failed");
+        require(_PVGSSVerify(cp, xc, shat, shatArray, C, PK, I, useDualTest) == true, "pvgss verify failed");
 
         // Store C_i
         if (msg.sender == session.exchangers[0]) {
@@ -1035,7 +1039,15 @@ contract Dex
         emit SessionStateUpdated(id, session.state);
     }
 
-     function lswap1(uint256 id, G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray, G1Point[] memory C, G1Point[] memory PK, uint256[][] memory invmatrix, uint256[][] memory invmatrix1 ,uint256[] memory I, uint256[] memory I1) external onlyExchanger(id){
+     function lswap1(uint256 id, G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray, G1Point[] memory C, G1Point[] memory PK, uint256[] memory weights, uint256[] memory weights1 ,uint256[] memory I, uint256[] memory I1) external onlyExchanger(id){
+         _lswap1(id, cp, xc, shat, shatArray, C, PK, weights, weights1, I, I1, false);
+     }
+
+     function lswap1Dual(uint256 id, G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray, G1Point[] memory C, G1Point[] memory PK, uint256[] memory weights, uint256[] memory weights1 ,uint256[] memory I, uint256[] memory I1) external onlyExchanger(id){
+         _lswap1(id, cp, xc, shat, shatArray, C, PK, weights, weights1, I, I1, true);
+     }
+
+     function _lswap1(uint256 id, G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray, G1Point[] memory C, G1Point[] memory PK, uint256[] memory weights, uint256[] memory weights1 ,uint256[] memory I, uint256[] memory I1, bool useDualTest) internal {
          Session storage session = sessions[id];
 
          // Check session state
@@ -1047,7 +1059,7 @@ contract Dex
          // Check stake
          require(stakedETH[msg.sender] >= MINIMAL_EXCHANGER_STAKE, "Insufficient stake");
          // Check validity of shares PVGSSVerify()
-         require(LSSSPVGSSVerify(cp, xc, shat, shatArray, C, PK, invmatrix, invmatrix1, I, I1) == true, "pvgss verify failed");
+         require(_LSSSPVGSSVerify(cp, xc, shat, shatArray, C, PK, weights, weights1, I, I1, useDualTest) == true, "pvgss verify failed");
 
          // Store C_i
          if (msg.sender == session.exchangers[0]) {

@@ -1,4 +1,4 @@
-package gssreconwithvrf
+package gsstesting
 
 import (
 	"crypto/rand"
@@ -6,14 +6,13 @@ import (
 	"math/big"
 	bn128 "pvgss/bn128"
 	"pvgss/crypto/lssspvgss/lsss"
-	"pvgss/crypto/lssspvgss/opmatrix"
 	"pvgss/crypto/node"
 	"pvgss/crypto/ssspvgss/gss"
 	"testing"
 	"time"
 )
 
-func TestGSSReconWithVrf(t *testing.T) {
+func TestGSSTesting(t *testing.T) {
 	n := int64(500)
 
 	secret, _ := rand.Int(rand.Reader, bn128.Order)
@@ -31,7 +30,6 @@ func TestGSSReconWithVrf(t *testing.T) {
 	P_F := node.NewNode(true, 0, 1, big.NewInt(int64(2)))
 	P_G := node.NewNode(true, 0, 1, big.NewInt(int64(3)))
 	P_2.Children = []*node.Node{P_E, P_F, P_G}
-	matrix := lsss.Convert(root)
 
 	// ==========================================
 	// Part 1: Test GSS Scheme
@@ -121,42 +119,6 @@ func TestGSSReconWithVrf(t *testing.T) {
 	} else {
 		fmt.Printf("GSS Shares No Pass RSCode Test!!!\n")
 	}
-	// //Method 3.1: Generate a global sparse parity check matrix H through recursively process each non-leaf node
-	// //Calculate the sparse matrix
-	// verSPMatrix, _ := GenerateSparseMatrix(root)
-	// fmt.Printf("The Sparse Matrix of Shamir Shares:\n")
-	// opmatrix.PrintMatrix(verSPMatrix)
-	// //Transfer secret shares as shares matrix with 1 column
-	// gsssharesMatrix := opmatrix.SetToMatrix(gssshares)
-	// //gsssharesMatrix[0][0] = big.NewInt(int64(8))
-	// resultSPMatrix, _ := opmatrix.MultiplyMatrix(verSPMatrix, gsssharesMatrix)
-	// if opmatrix.IsZeroMatrixMod(resultSPMatrix) {
-	// 	fmt.Printf("GSS Shares Pass Sparse Matrix Test\n")
-	// 	var Q []*big.Int
-	// 	Q = append(Q, gssshares[0])
-	// 	Q = append(Q, gssshares[1])
-	// 	Q = append(Q, gssshares[3])
-	// 	Q = append(Q, gssshares[4])
-	// 	path := node.NewNode(false, 3, 3, big.NewInt(int64(0)))
-	// 	P_1 := node.NewNode(false, 2, 2, big.NewInt(int64(1)))
-	// 	P_D := node.NewNode(true, 0, 1, big.NewInt(int64(2)))
-	// 	P_2 := node.NewNode(false, 1, 1, big.NewInt(int64(3)))
-	// 	path.Children = []*node.Node{P_1, P_D, P_2}
-	// 	P_A := node.NewNode(true, 0, 1, big.NewInt(int64(1)))
-	// 	P_B := node.NewNode(true, 0, 1, big.NewInt(int64(2)))
-	// 	P_1.Children = []*node.Node{P_A, P_B}
-	// 	P_E := node.NewNode(true, 0, 1, big.NewInt(int64(1)))
-	// 	P_2.Children = []*node.Node{P_E}
-	// 	recoveredSecret, _, err := gss.GSSRecon(path, Q)
-	// 	if err != nil {
-	// 		t.Fatalf("Reconstruction failed: %v", err)
-	// 	}
-	// 	fmt.Println("original secret = ", secret)
-	// 	fmt.Println("recover secret = ", recoveredSecret)
-	// } else {
-	// 	fmt.Printf("GSS Shares No Pass Sparse Matrix Test\n")
-	// }
-
 	// ==========================================
 	// Part 2: Test LSSS Scheme
 	// ==========================================
@@ -224,35 +186,4 @@ func TestGSSReconWithVrf(t *testing.T) {
 		fmt.Printf("LSSS Shares No Pass RSCode Test!!!\n")
 	}
 
-	//Method 3.2:Verify through parity-check matrix
-
-	//Transfer secret shares as shares matrix with 1 column
-	lssssharesMatrix := opmatrix.SetToMatrix(lsssshares)
-
-	//Calculate the parity-check matrix
-	var verLSSSPC bool
-	starttime = time.Now().UnixMicro()
-	for k := 0; k < int(n); k++ {
-		verPCMatrix := GenerateParityMatrix(matrix)
-		resultPCMatrix, _ := opmatrix.MultiplyMatrix(verPCMatrix, lssssharesMatrix)
-		verLSSSPC = opmatrix.IsZeroMatrixMod(resultPCMatrix)
-	}
-	endtime = time.Now().UnixMicro()
-	fmt.Printf("Parity-Check Time Used is %v us\n", (endtime-starttime)/n)
-
-	//sharesMatrix[0][0] = big.NewInt(int64(8))
-
-	if verLSSSPC {
-		fmt.Printf("LSSS Shares Pass Parity-Check Matrix Test\n")
-		lsssI := []int{0, 1, 3, 4}
-		//recoverLSSSShares := []*big.Int{lsssshares[0], lsssshares[1], lsssshares[3], lsssshares[4]}
-		reconS, err := lsss.Recon(root, lsssshares, lsssI)
-		if err != nil {
-			t.Fatalf("LSSS Recon error: %v", err)
-		}
-		fmt.Println("LSSS original secret = ", secret)
-		fmt.Println("LSSS recover secret  = ", reconS)
-	} else {
-		fmt.Printf("LSSS Shares No Pass Parity-Check Matrix Test\n")
-	}
 }
