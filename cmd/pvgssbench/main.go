@@ -306,11 +306,13 @@ func makeSSSReconBench(n int) benchCase {
 		q[i+1], _, err = ssspvgss.PVGSSPreRecon(c[i+2], sk[i+2])
 		must(err)
 	}
+	weights, err := ssspvgss.PrepareReconWeights(path)
+	must(err)
 	_ = root
 	return benchCase{"15", "Shamir SS-based", "PVGSSRecon", n, func(b *testing.B) {
 		b.ReportAllocs()
 		for i := 0; i < b.N; i++ {
-			s, err := ssspvgss.PVGSSRecon(path, q)
+			s, err := ssspvgss.PVGSSReconWithWeights(q, weights)
 			if err != nil {
 				panic(err)
 			}

@@ -164,3 +164,11 @@ func PVGSSRecon(RAA *node.Node, Q []*bn128.G1) (*bn128.G1, error) {
 	S, _, _ := gss.GrpGSSRecon(RAA, Q)
 	return S, nil
 }
+
+func PrepareReconWeights(RAA *node.Node) ([]*big.Int, error) {
+	return gss.PrepareGrpReconWeights(RAA)
+}
+
+func PVGSSReconWithWeights(Q []*bn128.G1, weights []*big.Int) (*bn128.G1, error) {
+	return gss.GrpGSSReconWithWeights(Q, weights)
+}

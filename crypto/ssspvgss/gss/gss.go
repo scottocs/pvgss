@@ -165,6 +165,58 @@ func GrpGSSRecon(AA *node.Node, Q []*bn128.G1) (*bn128.G1, *big.Int, error) {
 	return recovered, AA.Idx, nil
 }
 
+func PrepareGrpReconWeights(AA *node.Node) ([]*big.Int, error) {
+	if AA == nil {
+		return nil, errors.New("AA is empty")
+	}
+	return prepareGrpReconWeights(AA, big.NewInt(1))
+}
+
+func prepareGrpReconWeights(AA *node.Node, parentWeight *big.Int) ([]*big.Int, error) {
+	if AA.IsLeaf {
+		return []*big.Int{new(big.Int).Set(parentWeight)}, nil
+	}
+	if len(AA.Children) < AA.T {
+		return nil, fmt.Errorf("node [ID:%v]: insufficient children (%d < %d)", AA.Idx, len(AA.Children), AA.T)
+	}
+
+	childIdx := make([]*big.Int, AA.T)
+	for i := 0; i < AA.T; i++ {
+		if AA.Children[i] == nil {
+			return nil, fmt.Errorf("node [ID:%v]: missing child at index %d", AA.Idx, i)
+		}
+		childIdx[i] = AA.Children[i].Idx
+	}
+	lambdas, err := sss.PrecomputeLagrangeCoefficients(childIdx)
+	if err != nil {
+		return nil, err
+	}
+
+	weights := make([]*big.Int, 0)
+	for i := 0; i < AA.T; i++ {
+		childWeight := new(big.Int).Mul(parentWeight, lambdas[i])
+		childWeight.Mod(childWeight, bn128.Order)
+		childWeights, err := prepareGrpReconWeights(AA.Children[i], childWeight)
+		if err != nil {
+			return nil, err
+		}
+		weights = append(weights, childWeights...)
+	}
+	return weights, nil
+}
+
+func GrpGSSReconWithWeights(Q []*bn128.G1, weights []*big.Int) (*bn128.G1, error) {
+	if len(Q) != len(weights) {
+		return nil, fmt.Errorf("reconstruction weight length mismatch: got %d, want %d", len(weights), len(Q))
+	}
+	secret := new(bn128.G1).ScalarBaseMult(big.NewInt(0))
+	for i := range Q {
+		term := new(bn128.G1).ScalarMult(Q[i], weights[i])
+		secret.Add(secret, term)
+	}
+	return secret, nil
+}
+
 func GetLen(node *node.Node) int {
 	if node.IsLeaf {
 		return 1
