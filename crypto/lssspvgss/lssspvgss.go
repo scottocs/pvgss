@@ -2,7 +2,6 @@ package lssspvgss
 
 import (
 	"crypto/rand"
-	"crypto/sha256"
 	"fmt"
 	"math/big"
 	bn128 "pvgss/bn128"
@@ -10,6 +9,7 @@ import (
 	"pvgss/crypto/gsstesting"
 	"pvgss/crypto/lssspvgss/lsss"
 	"pvgss/crypto/node"
+	"pvgss/crypto/transcript"
 )
 
 type Proof struct {
@@ -19,21 +19,11 @@ type Proof struct {
 	Shatarry []*big.Int
 }
 
-func H(C, Cp []*bn128.G1) *big.Int {
-	var combinedBytes []byte
-	for _, point := range C {
-		combinedBytes = append(combinedBytes, point.Marshal()...)
-	}
-	for _, point := range Cp {
-		combinedBytes = append(combinedBytes, point.Marshal()...)
-	}
-	hash := sha256.Sum256(combinedBytes)
-	hashBigInt := new(big.Int).SetBytes(hash[:])
-	return hashBigInt
-}
-
 func PVGSSSetup() (*big.Int, *bn128.G1) {
 	sk, _ := rand.Int(rand.Reader, bn128.Order)
+	for sk.Sign() == 0 {
+		sk, _ = rand.Int(rand.Reader, bn128.Order)
+	}
 	pk1 := new(bn128.G1).ScalarBaseMult(sk)
 	return sk, pk1
 }
@@ -50,7 +40,7 @@ func PVGSSShare(s *big.Int, AA *node.Node, PK []*bn128.G1) ([]*bn128.G1, *Proof,
 	for i := 0; i < len(PK); i++ {
 		Cp[i] = new(bn128.G1).ScalarMult(PK[i], sharesp[i])
 	}
-	c := H(C, Cp)
+	c := transcript.SharingChallenge(AA, PK, C, Cp)
 	temp := new(big.Int).Mul(c, s)
 	temp.Mod(temp, bn128.Order)
 	shat := new(big.Int).Sub(sp, temp)
@@ -80,10 +70,22 @@ func PVGSSVerifyExact(C []*bn128.G1, prfs *Proof, root *node.Node, PK []*bn128.G
 }
 
 func PVGSSVerifyDual(C []*bn128.G1, prfs *Proof, root *node.Node, PK []*bn128.G1) (bool, error) {
-	return verifyWithGSSTest(C, prfs, root, PK, gsstesting.GSSTestDual)
+	dualTest := func(root *node.Node, shares []*big.Int) (*big.Int, bool, error) {
+		seed := transcript.DualTestSeed(root, shares, PK, C, prfs.Cp)
+		return gsstesting.GSSTestDualWithSeed(root, shares, seed)
+	}
+	return verifyWithGSSTest(C, prfs, root, PK, dualTest)
 }
 
 func verifyWithGSSTest(C []*bn128.G1, prfs *Proof, root *node.Node, PK []*bn128.G1, gssTest func(*node.Node, []*big.Int) (*big.Int, bool, error)) (bool, error) {
+	if prfs == nil || root == nil || len(C) == 0 || len(C) != len(PK) ||
+		len(C) != len(prfs.Cp) || len(C) != len(prfs.Shatarry) {
+		return false, fmt.Errorf("invalid PVGSS transcript dimensions")
+	}
+	expectedChallenge := transcript.SharingChallenge(root, PK, C, prfs.Cp)
+	if prfs.Xc == nil || prfs.Xc.Cmp(expectedChallenge) != 0 {
+		return false, fmt.Errorf("Fiat-Shamir challenge mismatch")
+	}
 	for i := 0; i < len(C); i++ {
 		left := prfs.Cp[i]
 		temp1 := new(bn128.G1).ScalarMult(C[i], prfs.Xc)
@@ -119,19 +121,14 @@ func PVGSSPreRecon(C *bn128.G1, sk *big.Int) (*bn128.G1, *dleq.DLEQProof, error)
 	}
 	decShare := new(bn128.G1).ScalarMult(C, skInv)
 
-	// Generate DLEQ proof for decShare = C^skInv
-	// 	We need to prove that log_C(decShare) = log_pk1(g1) where g1 = pk1^skInv
-	g1 := new(bn128.G1).ScalarBaseMult(big.NewInt(1)) // generator of G1
-	pk1 := new(bn128.G1).ScalarMult(g1, sk)           // pk1 = g1^sk
-
-	// Calculate powers: (decShare, g1)
+	// Prove log_g(pk1) = log_decShare(C) = sk.
+	g1 := new(bn128.G1).ScalarBaseMult(big.NewInt(1))
+	pk1 := new(bn128.G1).ScalarMult(g1, sk)
 	powers := &dleq.Powers{
-		G1: decShare, // decShare = C^skInv
-		G2: g1,       // g1 = pk1^skInv (since pk1 = g1^sk, so g1 = pk1^skInv)
+		G1: pk1,
+		G2: C,
 	}
-
-	// Generate DLEQ proof using (C, pk1) as generators
-	proof, err := dleq.DLEQProve(C, pk1, skInv, powers)
+	proof, err := dleq.DLEQProve(g1, decShare, sk, powers)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to generate DLEQ proof: %v", err)
 	}
@@ -140,18 +137,12 @@ func PVGSSPreRecon(C *bn128.G1, sk *big.Int) (*bn128.G1, *dleq.DLEQProof, error)
 }
 
 func PVGSSKeyVrf(C, decShare *bn128.G1, pk1 *bn128.G1, proof *dleq.DLEQProof) (bool, error) {
-	// Use DLEQ verification instead of pairing verification
-	g1 := new(bn128.G1).ScalarBaseMult(big.NewInt(1)) // generator of G1
-
-	// Calculate powers: (decShare, g1)
-	// We need to verify that log_C(decShare) = log_pk1(g1)
+	g1 := new(bn128.G1).ScalarBaseMult(big.NewInt(1))
 	powers := &dleq.Powers{
-		G1: decShare, // decShare = C^skInv
-		G2: g1,       // g1 = pk1^skInv
+		G1: pk1,
+		G2: C,
 	}
-
-	// Verify DLEQ proof using (C, pk1) as generators
-	if !dleq.DLEQVerify(C, pk1, powers, proof) {
+	if !dleq.DLEQVerify(g1, decShare, powers, proof) {
 		return false, fmt.Errorf("DLEQ verification failed")
 	}
 

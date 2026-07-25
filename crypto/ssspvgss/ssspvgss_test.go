@@ -67,6 +67,12 @@ func TestSSSPVGSS(t *testing.T) {
 	if err != nil || isShareValid == false {
 		t.Fatalf("pvgss share verify failed: %v\n", err)
 	}
+	originalChallenge := new(big.Int).Set(prfs.Xc)
+	prfs.Xc.SetInt64(0)
+	if ok, _ := PVGSSVerify(C, prfs, root, PK1); ok {
+		t.Fatal("verification accepted a prover-selected Fiat-Shamir challenge")
+	}
+	prfs.Xc.Set(originalChallenge)
 	fmt.Println("isShareValid : ", isShareValid)
 
 	// 4.PreRecon

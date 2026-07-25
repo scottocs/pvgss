@@ -38,6 +38,10 @@ func TestDLEQProveAndVerify(t *testing.T) {
 	if !DLEQVerify(g1, g2, powers, proof) {
 		t.Fatal("Proof verification failed")
 	}
+	proof.Challenge.SetInt64(0)
+	if DLEQVerify(g1, g2, powers, proof) {
+		t.Fatal("verification accepted a prover-selected challenge")
+	}
 }
 
 func TestDLEQVerifyWithWrongSecret(t *testing.T) {

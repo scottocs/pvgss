@@ -1,7 +1,8 @@
 package gsstesting
 
 import (
-	"crypto/rand"
+	"crypto/sha256"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"math/big"
@@ -9,6 +10,7 @@ import (
 
 	bn128 "pvgss/bn128"
 	"pvgss/crypto/node"
+	"pvgss/crypto/transcript"
 )
 
 var lagrangeCache sync.Map
@@ -54,7 +56,15 @@ func GSSTestDual(AA *node.Node, shares []*big.Int) (*big.Int, bool, error) {
 	if AA == nil {
 		return nil, false, errors.New("AA is empty")
 	}
-	consumed, rootSecret, err := verifyRecursiveRS(AA, shares, 0)
+	seed := transcript.DualTestSeed(AA, shares, nil, nil, nil)
+	return GSSTestDualWithSeed(AA, shares, seed)
+}
+
+func GSSTestDualWithSeed(AA *node.Node, shares []*big.Int, seed []byte) (*big.Int, bool, error) {
+	if AA == nil {
+		return nil, false, errors.New("AA is empty")
+	}
+	consumed, rootSecret, err := verifyRecursiveRS(AA, shares, 0, seed, nil)
 	if err != nil {
 		return nil, false, err
 	}
@@ -124,13 +134,14 @@ func RecurRSCode(AA *node.Node, shares []*big.Int) (bool, error) {
 	if AA == nil {
 		return false, errors.New("AA is empty")
 	}
-	_, _, err := verifyRecursiveRS(AA, shares, 0)
+	seed := transcript.DualTestSeed(AA, shares, nil, nil, nil)
+	_, _, err := verifyRecursiveRS(AA, shares, 0, seed, nil)
 	if err != nil {
 		return false, err
 	}
 	return true, nil
 }
-func verifyRecursiveRS(AA *node.Node, shares []*big.Int, offset int) (int, *big.Int, error) {
+func verifyRecursiveRS(AA *node.Node, shares []*big.Int, offset int, seed, path []byte) (int, *big.Int, error) {
 	// 1. Judge whether is leaf node
 	if AA.IsLeaf {
 		if offset >= len(shares) {
@@ -148,7 +159,10 @@ func verifyRecursiveRS(AA *node.Node, shares []*big.Int, offset int) (int, *big.
 		if i >= len(AA.Children) || AA.Children[i] == nil {
 			return 0, nil, fmt.Errorf("node [ID:%v]: missing child at index %d", AA.Idx, i)
 		}
-		consumed, childSecret, err := verifyRecursiveRS(AA.Children[i], shares, currentOffset)
+		var childIndex [4]byte
+		binary.BigEndian.PutUint32(childIndex[:], uint32(i))
+		childPath := append(append([]byte{}, path...), childIndex[:]...)
+		consumed, childSecret, err := verifyRecursiveRS(AA.Children[i], shares, currentOffset, seed, childPath)
 		if err != nil {
 			return 0, nil, err
 		}
@@ -164,7 +178,7 @@ func verifyRecursiveRS(AA *node.Node, shares []*big.Int, offset int) (int, *big.
 	}
 
 	// Invoke rscodeVerify algorithm to check all child shares whether is valid
-	if !rscodeVerify(childSecrets, k) {
+	if !rscodeVerify(childSecrets, k, seed, path) {
 		return 0, nil, fmt.Errorf("node [ID:%v]: RS Code verification failed (probability check)", AA.Idx)
 	}
 
@@ -181,7 +195,7 @@ func verifyRecursiveRS(AA *node.Node, shares []*big.Int, offset int) (int, *big.
 // Utilize the dual code C_perp
 // if a set of shares is valid，for any c_perp in C_perp， <shares, c_perp> = 0
 // C_perp from with a polynomail f(x) (with deg f(x) <= n-k-1),c_perp=(v1*f(1), ..., vn*f(n))
-func rscodeVerify(shares []*big.Int, k int) bool {
+func rscodeVerify(shares []*big.Int, k int, seed, path []byte) bool {
 	n := len(shares)
 	if n == k {
 		//fmt.Printf("This is \"AND\" structure, skips the RSCode verification!\n")
@@ -192,17 +206,20 @@ func rscodeVerify(shares []*big.Int, k int) bool {
 		return false
 	}
 
-	// 1. Generate f(x) with most (n-k-1) degree which is used to obtain c_perp
+	// Derive the random dual word from the complete response vector and node path.
 	degF := n - k - 1
 
-	// Selects f(x) Coefficients: f_0, f_1, ..., f_degF
 	fCoeffs := make([]*big.Int, degF+1)
 	for i := 0; i <= degF; i++ {
-		c, err := rand.Int(rand.Reader, bn128.Order)
-		if err != nil {
-			return false
-		}
-		fCoeffs[i] = c
+		h := sha256.New()
+		_, _ = h.Write([]byte("PVGSS-DUAL-NODE-v1"))
+		_, _ = h.Write(seed)
+		_, _ = h.Write(path)
+		var coefficientIndex [4]byte
+		binary.BigEndian.PutUint32(coefficientIndex[:], uint32(i))
+		_, _ = h.Write(coefficientIndex[:])
+		fCoeffs[i] = new(big.Int).SetBytes(h.Sum(nil))
+		fCoeffs[i].Mod(fCoeffs[i], bn128.Order)
 	}
 
 	weights, err := dualBarycentricWeights(n)

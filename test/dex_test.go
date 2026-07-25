@@ -22,6 +22,9 @@ import (
 )
 
 func TestDexGasLSSS(t *testing.T) {
+	if os.Getenv("PVGSS_RUN_INTEGRATION") != "1" {
+		t.Skip("set PVGSS_RUN_INTEGRATION=1 and start a local Ethereum node to run this integration benchmark")
+	}
 	file, err := os.OpenFile("log.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		log.Fatalf("Failed to open log file: %v", err)
@@ -91,7 +94,7 @@ func TestDexGasLSSS(t *testing.T) {
 
 		//account2 accept order :  call acceptOrder(uint256 orderId)
 		auth2 := utils.Transact(client, privateKeys[1], big.NewInt(0))
-		tx2, _ := dexInstance.AcceptOrder(auth2, orderId, big.NewInt(int64(nx)))
+		tx2, _ := dexInstance.AcceptOrder(auth2, orderId, big.NewInt(int64(nx)), big.NewInt(1))
 		_, _ = bind.WaitMined(context.Background(), client, tx2)
 		// log.Println("On-chain AcceptOrder Gas cost = ", receipt2.GasUsed)
 
@@ -240,6 +243,9 @@ func TestDexGasLSSS(t *testing.T) {
 }
 
 func TestDexGasSSS(t *testing.T) {
+	if os.Getenv("PVGSS_RUN_INTEGRATION") != "1" {
+		t.Skip("set PVGSS_RUN_INTEGRATION=1 and start a local Ethereum node to run this integration benchmark")
+	}
 	file, err := os.OpenFile("log.txt", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		log.Fatalf("Failed to open log file: %v", err)
@@ -314,7 +320,7 @@ func TestDexGasSSS(t *testing.T) {
 
 		//account2 accept order :  call acceptOrder(uint256 orderId)
 		auth2 := utils.Transact(client, privateKeys[1], big.NewInt(0))
-		tx2, _ := dexInstance.AcceptOrder(auth2, orderId, big.NewInt(int64(nx)))
+		tx2, _ := dexInstance.AcceptOrder(auth2, orderId, big.NewInt(int64(nx)), big.NewInt(1))
 		receipt2, _ := bind.WaitMined(context.Background(), client, tx2)
 		log.Println("On-chain AcceptOrder Gas cost = ", receipt2.GasUsed)
 
@@ -396,9 +402,6 @@ func TestDexGasSSS(t *testing.T) {
 		tx10, _ := dexInstance.Swap1(auth10, orderId, utils.G1sToPoints(num, prfs.Cp), prfs.Xc, prfs.Shat, prfs.Shatarry, utils.G1sToPoints(num, C), utils.G1sToPoints(num, PK1), VrfQ)
 		receipt, _ := bind.WaitMined(context.Background(), client, tx10)
 		log.Println("On-chain Swap1 Gas cost = ", receipt.GasUsed)
-
-		onchainIsShareValid, _ := dexInstance.GetVerifyResult(&bind.CallOpts{})
-		log.Println("On-chain Verification result = ", onchainIsShareValid)
 
 		//account1 call swap1 and swap2 in t1
 

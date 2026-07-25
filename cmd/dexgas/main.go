@@ -170,7 +170,7 @@ func (e *env) runScenario(scheme string, n int, orderID *big.Int) []gasRow {
 	amountSell := mustDecimal("10000000000000000")
 	amountBuy := mustDecimal("30000000000000000000")
 	createReceipt := mustTx(e.dex.CreateOrder(e.auth(0, big.NewInt(0)), e.pvethAddr, amountSell, e.pvusdtAddr, amountBuy))
-	acceptReceipt := mustTx(e.dex.AcceptOrder(e.auth(1, big.NewInt(0)), orderID, big.NewInt(int64(n))))
+	acceptReceipt := mustTx(e.dex.AcceptOrder(e.auth(1, big.NewInt(0)), orderID, big.NewInt(int64(n)), big.NewInt(1)))
 
 	var rows []gasRow
 	switch scheme {
@@ -200,8 +200,9 @@ func (e *env) runLSSS(n int, orderID *big.Int, dual bool) []gasRow {
 	root, _, _ := dexAccessTree(n, 1)
 	num := n + 2
 	sk, pk := e.keySlice(num)
-	secret := randomScalar()
-	c, proof, err := lssspvgss.PVGSSShare(secret, root, pk)
+	sellerC, sellerProof, err := lssspvgss.PVGSSShare(randomScalar(), root, pk)
+	must(err)
+	buyerC, buyerProof, err := lssspvgss.PVGSSShare(randomScalar(), root, pk)
 	must(err)
 	matrix := lsss.Convert(root)
 	i0 := []int{0, 1}
@@ -210,32 +211,33 @@ func (e *env) runLSSS(n int, orderID *big.Int, dual bool) []gasRow {
 	must(err)
 	w1, err := lsss.ReconstructionWeightsForRows(matrix, i1)
 	must(err)
-	dec, proofs := lsssPreReconAll(c, sk)
+	sellerDec, sellerOpeningProofs := lsssPreReconAll(sellerC, sk)
+	buyerDec, buyerOpeningProofs := lsssPreReconAll(buyerC, sk)
 	mustReceipt := e.waitMust(e.dex.CreatePath(e.auth(0, big.NewInt(0)), big.NewInt(int64(n)), big.NewInt(1), big.NewInt(4)))
 	_ = mustReceipt
 
 	var r1, r2 *types.Receipt
 	if dual {
-		r1 = e.waitMust(e.dex.Lswap1Dual(e.auth(1, big.NewInt(0)), orderID, g1sToPoints(proof.Cp), proof.Xc, proof.Shat, proof.Shatarry, g1sToPoints(c), g1sToPoints(pk), w0, w1, intsToBig(i0), intsToBig(i1)))
-		r2 = e.waitMust(e.dex.Lswap1Dual(e.auth(0, big.NewInt(0)), orderID, g1sToPoints(proof.Cp), proof.Xc, proof.Shat, proof.Shatarry, g1sToPoints(c), g1sToPoints(pk), w0, w1, intsToBig(i0), intsToBig(i1)))
+		r1 = e.waitMust(e.dex.Lswap1Dual(e.auth(1, big.NewInt(0)), orderID, g1sToPoints(buyerProof.Cp), buyerProof.Xc, buyerProof.Shat, buyerProof.Shatarry, g1sToPoints(buyerC), g1sToPoints(pk), w0, w1, intsToBig(i0), intsToBig(i1)))
+		r2 = e.waitMust(e.dex.Lswap1Dual(e.auth(0, big.NewInt(0)), orderID, g1sToPoints(sellerProof.Cp), sellerProof.Xc, sellerProof.Shat, sellerProof.Shatarry, g1sToPoints(sellerC), g1sToPoints(pk), w0, w1, intsToBig(i0), intsToBig(i1)))
 	} else {
-		r1 = e.waitMust(e.dex.Lswap1(e.auth(1, big.NewInt(0)), orderID, g1sToPoints(proof.Cp), proof.Xc, proof.Shat, proof.Shatarry, g1sToPoints(c), g1sToPoints(pk), w0, w1, intsToBig(i0), intsToBig(i1)))
-		r2 = e.waitMust(e.dex.Lswap1(e.auth(0, big.NewInt(0)), orderID, g1sToPoints(proof.Cp), proof.Xc, proof.Shat, proof.Shatarry, g1sToPoints(c), g1sToPoints(pk), w0, w1, intsToBig(i0), intsToBig(i1)))
+		r1 = e.waitMust(e.dex.Lswap1(e.auth(1, big.NewInt(0)), orderID, g1sToPoints(buyerProof.Cp), buyerProof.Xc, buyerProof.Shat, buyerProof.Shatarry, g1sToPoints(buyerC), g1sToPoints(pk), w0, w1, intsToBig(i0), intsToBig(i1)))
+		r2 = e.waitMust(e.dex.Lswap1(e.auth(0, big.NewInt(0)), orderID, g1sToPoints(sellerProof.Cp), sellerProof.Xc, sellerProof.Shat, sellerProof.Shatarry, g1sToPoints(sellerC), g1sToPoints(pk), w0, w1, intsToBig(i0), intsToBig(i1)))
 	}
-	r3 := e.waitMust(e.dex.Swap2(e.auth(0, big.NewInt(0)), orderID, g1ToPoint(dec[0]), g1ToPoint(proofs[0].C1), g1ToPoint(proofs[0].C2), proofs[0].Challenge, proofs[0].Response))
+	r3 := e.waitMust(e.dex.Swap2(e.auth(0, big.NewInt(0)), orderID, g1ToPoint(sellerDec[0]), g1ToPoint(sellerOpeningProofs[0].C1), g1ToPoint(sellerOpeningProofs[0].C2), sellerOpeningProofs[0].Challenge, sellerOpeningProofs[0].Response))
 
 	e.increaseTime(31)
 	r4 := e.waitMust(e.dex.Complain(e.auth(0, big.NewInt(0)), orderID))
-	e.increaseTime(61)
-	r5 := e.waitMust(e.dex.Determine(e.auth(1, big.NewInt(0)), orderID))
+	r5 := e.waitMust(e.dex.SubmitWatcherShare(e.auth(2, big.NewInt(0)), orderID, g1ToPoint(buyerDec[2]), g1ToPoint(buyerOpeningProofs[2].C1), g1ToPoint(buyerOpeningProofs[2].C2), buyerOpeningProofs[2].Challenge, buyerOpeningProofs[2].Response))
+	r6 := e.waitMust(e.dex.Determine(e.auth(1, big.NewInt(0)), orderID))
 
 	return []gasRow{
 		{"17", scheme, n, "counterparty_lswap1", r1.GasUsed, r1.TxHash},
 		{"17", scheme, n, "swap1_plus_swap2", r2.GasUsed + r3.GasUsed, r2.TxHash},
 		{"17", scheme, n, "lswap1", r2.GasUsed, r2.TxHash},
-		{"18", scheme, n, "swap2", r3.GasUsed, r3.TxHash},
+		{"18", scheme, n, "swap2", r5.GasUsed, r5.TxHash},
 		{"18", scheme, n, "complain", r4.GasUsed, r4.TxHash},
-		{"18", scheme, n, "determine", r5.GasUsed, r5.TxHash},
+		{"18", scheme, n, "determine", r6.GasUsed, r6.TxHash},
 	}
 }
 
@@ -247,10 +249,12 @@ func (e *env) runSSS(n int, orderID *big.Int, dual bool) []gasRow {
 	root, _, _ := dexAccessTree(n, 1)
 	num := n + 2
 	sk, pk := e.keySlice(num)
-	secret := randomScalar()
-	c, proof, err := ssspvgss.PVGSSShare(secret, root, pk)
+	sellerC, sellerProof, err := ssspvgss.PVGSSShare(randomScalar(), root, pk)
 	must(err)
-	dec, proofs := sssPreReconAll(c, sk)
+	buyerC, buyerProof, err := ssspvgss.PVGSSShare(randomScalar(), root, pk)
+	must(err)
+	sellerDec, sellerOpeningProofs := sssPreReconAll(sellerC, sk)
+	buyerDec, buyerOpeningProofs := sssPreReconAll(buyerC, sk)
 	mustReceipt := e.waitMust(e.dex.CreatePath(e.auth(0, big.NewInt(0)), big.NewInt(int64(n)), big.NewInt(1), big.NewInt(4)))
 	_ = mustReceipt
 	vrfQ := make([]*big.Int, 3)
@@ -260,26 +264,26 @@ func (e *env) runSSS(n int, orderID *big.Int, dual bool) []gasRow {
 
 	var r1, r2 *types.Receipt
 	if dual {
-		r1 = e.waitMust(e.dex.Swap1Dual(e.auth(1, big.NewInt(0)), orderID, g1sToPoints(proof.Cp), proof.Xc, proof.Shat, proof.Shatarry, g1sToPoints(c), g1sToPoints(pk), vrfQ))
-		r2 = e.waitMust(e.dex.Swap1Dual(e.auth(0, big.NewInt(0)), orderID, g1sToPoints(proof.Cp), proof.Xc, proof.Shat, proof.Shatarry, g1sToPoints(c), g1sToPoints(pk), vrfQ))
+		r1 = e.waitMust(e.dex.Swap1Dual(e.auth(1, big.NewInt(0)), orderID, g1sToPoints(buyerProof.Cp), buyerProof.Xc, buyerProof.Shat, buyerProof.Shatarry, g1sToPoints(buyerC), g1sToPoints(pk), vrfQ))
+		r2 = e.waitMust(e.dex.Swap1Dual(e.auth(0, big.NewInt(0)), orderID, g1sToPoints(sellerProof.Cp), sellerProof.Xc, sellerProof.Shat, sellerProof.Shatarry, g1sToPoints(sellerC), g1sToPoints(pk), vrfQ))
 	} else {
-		r1 = e.waitMust(e.dex.Swap1(e.auth(1, big.NewInt(0)), orderID, g1sToPoints(proof.Cp), proof.Xc, proof.Shat, proof.Shatarry, g1sToPoints(c), g1sToPoints(pk), vrfQ))
-		r2 = e.waitMust(e.dex.Swap1(e.auth(0, big.NewInt(0)), orderID, g1sToPoints(proof.Cp), proof.Xc, proof.Shat, proof.Shatarry, g1sToPoints(c), g1sToPoints(pk), vrfQ))
+		r1 = e.waitMust(e.dex.Swap1(e.auth(1, big.NewInt(0)), orderID, g1sToPoints(buyerProof.Cp), buyerProof.Xc, buyerProof.Shat, buyerProof.Shatarry, g1sToPoints(buyerC), g1sToPoints(pk), vrfQ))
+		r2 = e.waitMust(e.dex.Swap1(e.auth(0, big.NewInt(0)), orderID, g1sToPoints(sellerProof.Cp), sellerProof.Xc, sellerProof.Shat, sellerProof.Shatarry, g1sToPoints(sellerC), g1sToPoints(pk), vrfQ))
 	}
-	r3 := e.waitMust(e.dex.Swap2(e.auth(0, big.NewInt(0)), orderID, g1ToPoint(dec[0]), g1ToPoint(proofs[0].C1), g1ToPoint(proofs[0].C2), proofs[0].Challenge, proofs[0].Response))
+	r3 := e.waitMust(e.dex.Swap2(e.auth(0, big.NewInt(0)), orderID, g1ToPoint(sellerDec[0]), g1ToPoint(sellerOpeningProofs[0].C1), g1ToPoint(sellerOpeningProofs[0].C2), sellerOpeningProofs[0].Challenge, sellerOpeningProofs[0].Response))
 
 	e.increaseTime(31)
 	r4 := e.waitMust(e.dex.Complain(e.auth(0, big.NewInt(0)), orderID))
-	e.increaseTime(61)
-	r5 := e.waitMust(e.dex.Determine(e.auth(1, big.NewInt(0)), orderID))
+	r5 := e.waitMust(e.dex.SubmitWatcherShare(e.auth(2, big.NewInt(0)), orderID, g1ToPoint(buyerDec[2]), g1ToPoint(buyerOpeningProofs[2].C1), g1ToPoint(buyerOpeningProofs[2].C2), buyerOpeningProofs[2].Challenge, buyerOpeningProofs[2].Response))
+	r6 := e.waitMust(e.dex.Determine(e.auth(1, big.NewInt(0)), orderID))
 
 	return []gasRow{
 		{"17", scheme, n, "counterparty_swap1", r1.GasUsed, r1.TxHash},
 		{"17", scheme, n, "swap1_plus_swap2", r2.GasUsed + r3.GasUsed, r2.TxHash},
 		{"17", scheme, n, "swap1", r2.GasUsed, r2.TxHash},
-		{"18", scheme, n, "swap2", r3.GasUsed, r3.TxHash},
+		{"18", scheme, n, "swap2", r5.GasUsed, r5.TxHash},
 		{"18", scheme, n, "complain", r4.GasUsed, r4.TxHash},
-		{"18", scheme, n, "determine", r5.GasUsed, r5.TxHash},
+		{"18", scheme, n, "determine", r6.GasUsed, r6.TxHash},
 	}
 }
 

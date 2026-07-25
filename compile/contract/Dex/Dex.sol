@@ -154,8 +154,78 @@ contract Dex
         uint256[] ShatArray;
     }
 
-    bool[] VerifyResult;
-    bool[] KeyVerifyResult;
+    function _appendPolicy(bytes memory encoded, uint256 nodeId) internal view returns (bytes memory) {
+        Node storage node = nodes[nodeId];
+        encoded = abi.encodePacked(
+            encoded,
+            node.IsLeaf,
+            node.ChildrenNum,
+            node.T
+        );
+        for (uint256 i = 0; i < node.Children.length; i++) {
+            encoded = _appendPolicy(encoded, node.Children[i]);
+        }
+        return encoded;
+    }
+
+    function _sharingChallenge(
+        G1Point[] memory PK,
+        G1Point[] memory C,
+        G1Point[] memory cp
+    ) internal view returns (uint256) {
+        bytes memory encoded = _appendPolicy(bytes("PVGSS-SHARE-v1"), 0);
+        for (uint256 i = 0; i < PK.length; i++) {
+            encoded = abi.encodePacked(encoded, PK[i].X, PK[i].Y);
+        }
+        for (uint256 i = 0; i < C.length; i++) {
+            encoded = abi.encodePacked(encoded, C[i].X, C[i].Y);
+        }
+        for (uint256 i = 0; i < cp.length; i++) {
+            encoded = abi.encodePacked(encoded, cp[i].X, cp[i].Y);
+        }
+        return uint256(sha256(encoded)) % GEN_ORDER;
+    }
+
+    function _dleqChallenge(
+        G1Point memory C,
+        G1Point memory pk1,
+        G1Point memory decShare,
+        G1Point memory com1,
+        G1Point memory com2
+    ) internal view returns (uint256) {
+        return uint256(sha256(abi.encodePacked(
+            "PVGSS-DLEQ-v1",
+            G1.X, G1.Y,
+            decShare.X, decShare.Y,
+            pk1.X, pk1.Y,
+            C.X, C.Y,
+            com1.X, com1.Y,
+            com2.X, com2.Y
+        ))) % GEN_ORDER;
+    }
+
+    function _dualTestSeed(
+        uint256[] memory shares,
+        G1Point[] memory PK,
+        G1Point[] memory C,
+        G1Point[] memory cp
+    ) internal view returns (bytes32) {
+        bytes memory encoded = _appendPolicy(bytes("PVGSS-DUAL-v1"), 0);
+        for (uint256 i = 0; i < shares.length; i++) {
+            encoded = abi.encodePacked(encoded, shares[i]);
+        }
+        for (uint256 i = 0; i < PK.length; i++) {
+            encoded = abi.encodePacked(encoded, PK[i].X, PK[i].Y);
+        }
+        for (uint256 i = 0; i < C.length; i++) {
+            encoded = abi.encodePacked(encoded, C[i].X, C[i].Y);
+        }
+        for (uint256 i = 0; i < cp.length; i++) {
+            encoded = abi.encodePacked(encoded, cp[i].X, cp[i].Y);
+        }
+        encoded = abi.encodePacked(encoded, block.timestamp);
+        return sha256(encoded);
+    }
 
 
 
@@ -296,34 +366,6 @@ contract Dex
         return (consumed, secret, true);
     }
 
-
-    function reconCoefficient(uint256[] memory sharesVals) 
-        public view returns (uint256[] memory coefficients) {
-            uint256 t = sharesVals.length;
-            require(t > 0, "No shares provided");
-            //V[i][j] = (i+1)^j mod p
-            uint256[][] memory vandermondeMatrix = new uint256[][](t);
-            for(uint256 i = 0; i < t; i++) {
-                vandermondeMatrix[i] = new uint256[](t);
-                uint256 xPower = 1;
-                for(uint256 j = 0; j < t; j++) {
-                    vandermondeMatrix[i][j] = xPower;
-                    xPower = mulmod(xPower, i + 1, GEN_ORDER);
-                }
-            }
-            uint256[][] memory vandermondeInverse = GaussJordanInverse(vandermondeMatrix);
-            //Compute coefficient vector: coeff = V^(-1) * shares
-            coefficients = new uint256[](t);
-            for(uint256 i = 0; i < t; i++) {
-                uint256 sum = 0;
-                for(uint256 j = 0; j < t; j++) {
-                    sum = addmod(sum, mulmod(vandermondeInverse[i][j], sharesVals[j], GEN_ORDER), GEN_ORDER);
-                }
-                coefficients[i] = sum;
-            }
-            return coefficients;
-        }
-
     //===========Method 2============
 
     function RecurRSCode(uint256 nodeId, uint256[] memory shares) 
@@ -333,13 +375,14 @@ contract Dex
             return false;
         }
 
-        // 启动递归验证
-        (uint256 _consumed, uint256 _secret, bool verifySuccess) = verifyRecursiveRS(nodeId, shares, 0);
+        G1Point[] memory empty = new G1Point[](0);
+        bytes32 seed = _dualTestSeed(shares, empty, empty, empty);
+        (uint256 _consumed, uint256 _secret, bool verifySuccess) = verifyRecursiveRS(nodeId, shares, 0, seed);
 
         return verifySuccess;
     }
 
-    function verifyRecursiveRS(uint256 nodeId, uint256[] memory shares, uint256 offset) 
+    function verifyRecursiveRS(uint256 nodeId, uint256[] memory shares, uint256 offset, bytes32 seed)
         internal view returns (uint256 consumed, uint256 secret, bool success) {
         
         Node memory node = nodes[nodeId];
@@ -368,7 +411,7 @@ contract Dex
             uint256 childSecret;
             bool childSuccess;
 
-            (childConsumed, childSecret, childSuccess) = verifyRecursiveRS(childNodeId, shares, currentOffset);
+            (childConsumed, childSecret, childSuccess) = verifyRecursiveRS(childNodeId, shares, currentOffset, seed);
             if (!childSuccess) {
                 return (0, 0, false);
             }
@@ -386,7 +429,7 @@ contract Dex
         }
 
         // 4. 调用 rscodeVerify 算法检查所有子份额是否有效
-        if (!rscodeVerify(childSecrets, k)) {
+        if (!rscodeVerify(childSecrets, k, seed, nodeId)) {
             return (0, 0, false); // RS Code verification failed
         }
 
@@ -405,7 +448,7 @@ contract Dex
     }
     
 
-    function rscodeVerify(uint256[] memory shares, uint256 k) 
+    function rscodeVerify(uint256[] memory shares, uint256 k, bytes32 seed, uint256 nodeId)
         internal view returns (bool) {
             uint256 n = shares.length;
 
@@ -415,13 +458,13 @@ contract Dex
             if (n < k) {
                 return false;
             }
-            uint256 seed = uint256(keccak256(abi.encodePacked(shares[0], n, k)));
-
             uint256 degF = n - k - 1;
             uint256[] memory fCoeffs = new uint256[](degF + 1);
 
             for (uint256 i = 0; i <= degF; i++) {
-                fCoeffs[i] = uint256(keccak256(abi.encodePacked(seed, i))) % GEN_ORDER;
+                fCoeffs[i] = uint256(sha256(abi.encodePacked(
+                    "PVGSS-DUAL-NODE-v1", seed, nodeId, i
+                ))) % GEN_ORDER;
             }
 
             uint256[] memory factorial = new uint256[](n);
@@ -569,10 +612,21 @@ contract Dex
         return _PVGSSVerify(cp, xc, shat, shatArray, C, PK, I, true);
     }
 
-    function _PVGSSVerify(G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray,G1Point[] memory C,G1Point[] memory PK, uint256[] memory I, bool useDualTest) internal returns (bool) {
-        bool gssVerified = useDualTest ? RecurRSCode(0, shatArray) : ReconPolynomial(0, shatArray);
+    function _PVGSSVerify(G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray,G1Point[] memory C,G1Point[] memory PK, uint256[] memory I, bool useDualTest) internal view returns (bool) {
+        if (C.length == 0 || C.length != PK.length || C.length != cp.length || C.length != shatArray.length) {
+            return false;
+        }
+        if (xc != _sharingChallenge(PK, C, cp)) {
+            return false;
+        }
+        bool gssVerified;
+        if (useDualTest) {
+            bytes32 dualSeed = _dualTestSeed(shatArray, PK, C, cp);
+            (, , gssVerified) = verifyRecursiveRS(0, shatArray, 0, dualSeed);
+        } else {
+            gssVerified = ReconPolynomial(0, shatArray);
+        }
         if (!gssVerified){
-            VerifyResult.push(false);
             return false;
         }
         uint256 nodeId = 0;
@@ -586,84 +640,65 @@ contract Dex
             G1Point memory temp2 = g1mul(PK[i],shatArray[i]);
             G1Point memory right = g1add(temp1,temp2);
             if (!equals(cp[i],right)) {
-                VerifyResult.push(false);
                 return false;
             }
         }
         (uint256 recovershat, uint256 idx) = GSSRecon(nodeId,Q,startIdx);
         if (shat != recovershat) {
-            VerifyResult.push(false);
             return false;
         }
-        VerifyResult.push(true);
         return true;
     }
-
-    function GetVerifyResult() public view returns (bool []memory) {
-        return VerifyResult;
-    }
-
 
     function PVGSSKeyVrf(G1Point calldata C, G1Point calldata decShare, G1Point calldata pk1, G1Point calldata com1, G1Point calldata com2, uint256 challenge, uint256 response) external payable returns (bool) {
-        G1Point memory L1 = g1mulCalldata(C, response);
-        G1Point memory R1_term = g1mulCalldata(decShare, challenge);
+        if (challenge != _dleqChallenge(C, pk1, decShare, com1, com2)) {
+            return false;
+        }
+        G1Point memory L1 = g1mul(G1, response);
+        G1Point memory R1_term = g1mulCalldata(pk1, challenge);
         G1Point memory R1 = g1addCalldata(com1, R1_term);
 
         if (L1.X != R1.X || L1.Y != R1.Y) {
-            KeyVerifyResult.push(false);
             return false;
         }
 
-        G1Point memory L2 = g1mulCalldata(pk1, response);
-        G1Point memory R2_term = g1mulStorage(G1, challenge);
+        G1Point memory L2 = g1mulCalldata(decShare, response);
+        G1Point memory R2_term = g1mulCalldata(C, challenge);
         G1Point memory R2 = g1addCalldata(com2, R2_term);
         
         if (L2.X != R2.X || L2.Y != R2.Y) {
-            KeyVerifyResult.push(false);
             return false;
         }
 
-        KeyVerifyResult.push(true);
         return true;
     }
 
-    function _PVGSSKeyVrf(G1Point storage C, G1Point calldata decShare, G1Point storage pk1, G1Point calldata com1, G1Point calldata com2, uint256 challenge, uint256 response) internal returns (bool) {
-        G1Point memory L1 = g1mulStorage(C, response);
-        G1Point memory R1_term = g1mulCalldata(decShare, challenge);
+    function _PVGSSKeyVrf(G1Point storage C, G1Point calldata decShare, G1Point storage pk1, G1Point calldata com1, G1Point calldata com2, uint256 challenge, uint256 response) internal view returns (bool) {
+        if (challenge != _dleqChallenge(C, pk1, decShare, com1, com2)) {
+            return false;
+        }
+        G1Point memory L1 = g1mul(G1, response);
+        G1Point memory R1_term = g1mulStorage(pk1, challenge);
         G1Point memory R1 = g1addCalldata(com1, R1_term);
 
         if (L1.X != R1.X || L1.Y != R1.Y) {
-            KeyVerifyResult.push(false);
             return false;
         }
 
-        G1Point memory L2 = g1mulStorage(pk1, response);
-        G1Point memory R2_term = g1mulStorage(G1, challenge);
+        G1Point memory L2 = g1mulCalldata(decShare, response);
+        G1Point memory R2_term = g1mulStorage(C, challenge);
         G1Point memory R2 = g1addCalldata(com2, R2_term);
         
         if (L2.X != R2.X || L2.Y != R2.Y) {
-            KeyVerifyResult.push(false);
             return false;
         }
 
-        KeyVerifyResult.push(true);
         return true;
-    }
-
-    function GetKeyVrfResult() public view returns (bool []memory) {
-        return KeyVerifyResult;
     }
 
     // ========================== PVGSS-SSS Verification End ===============================
 
     // ========================== PVGSS-LSSS Verification ===============================
-
-    bool[]  LSSSVerifyResult;
-
-
-    function GetLSSSVerifyResult() public view returns (bool[] memory) {
-        return LSSSVerifyResult;
-    }
 
     function LSSSPVGSSVerify(G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray,G1Point[] memory C,G1Point[] memory PK, uint256[] memory weights, uint256[] memory weights1 ,uint256[] memory I, uint256[] memory I1) public payable returns (bool) {
          return _LSSSPVGSSVerify(cp, xc, shat, shatArray, C, PK, weights, weights1, I, I1, false);
@@ -673,30 +708,37 @@ contract Dex
          return _LSSSPVGSSVerify(cp, xc, shat, shatArray, C, PK, weights, weights1, I, I1, true);
      }
 
-    function _LSSSPVGSSVerify(G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray,G1Point[] memory C,G1Point[] memory PK, uint256[] memory weights, uint256[] memory weights1 ,uint256[] memory I, uint256[] memory I1, bool useDualTest) internal returns (bool) {
-         bool gssVerified = useDualTest ? RecurRSCode(0, shatArray) : ReconPolynomial(0, shatArray);
+    function _LSSSPVGSSVerify(G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray,G1Point[] memory C,G1Point[] memory PK, uint256[] memory weights, uint256[] memory weights1 ,uint256[] memory I, uint256[] memory I1, bool useDualTest) internal view returns (bool) {
+         if (C.length == 0 || C.length != PK.length || C.length != cp.length || C.length != shatArray.length) {
+             return false;
+         }
+         if (xc != _sharingChallenge(PK, C, cp)) {
+             return false;
+         }
+         bool gssVerified;
+         if (useDualTest) {
+             bytes32 dualSeed = _dualTestSeed(shatArray, PK, C, cp);
+             (, , gssVerified) = verifyRecursiveRS(0, shatArray, 0, dualSeed);
+         } else {
+             gssVerified = ReconPolynomial(0, shatArray);
+         }
          if (!gssVerified){
-             LSSSVerifyResult.push(false);
              return false;
          }
          for(uint i = 0; i < shatArray.length;i++) {
              G1Point memory right = g1add(g1mul(C[i],xc),g1mul(PK[i],shatArray[i]));
              if (!equals(cp[i],right)) {
-                 LSSSVerifyResult.push(false);
                  return false;
              }
          }
          uint256 recovershat = LSSSRecon(weights,shatArray,I);
          if (shat != recovershat) {
-             LSSSVerifyResult.push(false);
              return false;
          }
          uint256 recovershat1 = LSSSRecon(weights1,shatArray,I1);
          if (shat != recovershat1) {
-             LSSSVerifyResult.push(false);
              return false;
          }
-         LSSSVerifyResult.push(true);
          return true;
      }
 
@@ -710,56 +752,6 @@ contract Dex
 	         }
 	         return reconS;
 	     }
-
-     function GaussJordanInverse(uint256[][] memory A) internal view returns (uint256[][] memory) {
-         uint256 n = A.length;
-         // creat [A | I]
-         uint256[][] memory augmented = new uint256[][](n);
-         for(uint256 i = 0; i < n; i++) {
-             augmented[i] = new uint256[](2*n);
-             for (uint256 j = 0; j < n; j++) {
-                 augmented[i][j] = A[i][j];
-             }
-             augmented[i][i+n] = 1;
-         }
-         for (uint256 i = 0; i < n; i++) {
-             if (augmented[i][i] == 0) {
-                 bool found = false;
-                 for (uint256 j = i + 1; j < n; j++) {
-                     if(augmented[j][i] != 0) {
-                         for (uint256 k = 0; k < 2 * n; k++) {
-                             uint256 temp = augmented[i][k];
-                             augmented[i][k] = augmented[j][k];
-                             augmented[j][k] = temp;
-                         }
-                         found = true;
-                         break;
-                     }
-                 }
-                 require(found, "Matrix is singular and cannot be inverted");
-             }
-             uint256 invPivot = _modInv(augmented[i][i], GEN_ORDER);
-             for(uint256 j = 0; j < 2 * n; j++) {
-                 augmented[i][j] = mulmod(augmented[i][j], invPivot, GEN_ORDER);
-             }
-             for (uint256 j = 0; j < n; j++) {
-                 if (j != i) {
-                     uint256 factor = augmented[j][i];
-                     for (uint256 k = 0; k < 2 * n; k++) {
-                         augmented[j][k] = submod2(augmented[j][k], mulmod(factor, augmented[i][k], GEN_ORDER), GEN_ORDER);
-                     }
-                 }
-             }
-         }
-         uint256[][] memory inverse = new uint256[][](n);
-         for (uint256 i = 0; i < n; i++) {
-             inverse[i] = new uint256[](n);
-             for(uint256 j = 0; j < n; j++) {
-                 inverse[i][j] = augmented[i][j+n];
-             }
-         }
-         return inverse;
-     }
 
     //========================== PVGSS-LSSS Verification End ===============================
 
@@ -798,8 +790,8 @@ contract Dex
 
 
     // State variable to track session state
-    // Active: session created  halfSwap1:one execute swap1  finishSwap1: two execute swap1 halfSwap2: one execute swap2
-    enum SessionState { Active, halfSwap1, finishSwap1, halfSwap2, Complain, Success, Failure }
+    // Ready means that both exchanger openings have been verified but settlement has not executed.
+    enum SessionState { Active, halfSwap1, finishSwap1, halfSwap2, Ready, Complain, Success, Failure }
     struct Session {
         SessionState state; // Session state
         address[] exchangers; // seller as exchanger[0], buyer as exchanger[1] in the session
@@ -809,6 +801,7 @@ contract Dex
         mapping(address => G1Point) Cshares2; //shares from buyer
         uint256 expiration1; // First expiration time
         uint256 expiration2; // Second expiration time
+        uint256 recoveryThreshold; // Required watcher responses after a complaint
         bool[2] seller_flag; // swap flag of seller
         bool[2] buyer_flag;  // swap flag of buyer
         mapping(address => bool) watcher_flag; //submit flag of watcher
@@ -826,12 +819,18 @@ contract Dex
     event OrderCreated(uint256 orderId, address indexed seller, address tokenSell, uint256 amountSell, address tokenBuy, uint256 amountBuy);
     event Incentivized(address indexed exchanger, uint256 amount);
     event Penalized(address indexed exchanger, uint256 amount);
-    event SessionCreated(uint256 indexed orderId, address seller, address buyer, address[] watchers, uint256 expiration1, uint256 expiration2);
+    event SessionCreated(uint256 indexed orderId, address seller, address buyer, address[] watchers, uint256 recoveryThreshold, uint256 expiration1, uint256 expiration2);
 
 
     modifier onlyExchanger(uint256 id) {
         require(msg.sender == sessions[id].exchangers[0] || msg.sender == sessions[id].exchangers[1], "Invalid exchanger");
         _;
+    }
+
+    function _validateSessionPolicy(Session storage session, uint256 statementLength) internal view {
+        require(nodes[3].T == session.recoveryThreshold, "PVGSS threshold does not match session");
+        require(nodes[3].ChildrenNum == session.watchers.length, "PVGSS watcher set size does not match session");
+        require(statementLength == session.watchers.length + 2, "PVGSS participant count does not match session");
     }
 
     //register pubkey
@@ -853,7 +852,7 @@ contract Dex
         balances[msg.sender][token] += amount;
 
         //transfer from sender to this contract
-        erc20Token.transferFrom(msg.sender, address(this), amount);
+        require(erc20Token.transferFrom(msg.sender, address(this), amount), "Token deposit failed");
 
         emit TokensReceived(token, msg.sender, amount);
     }
@@ -865,7 +864,7 @@ contract Dex
         balances[msg.sender][token] -= amount;
 
         //withdraw to sender
-        IERC20(token).transfer(msg.sender, amount);
+        require(IERC20(token).transfer(msg.sender, amount), "Token withdrawal failed");
     }
 
     // stake ETH
@@ -932,11 +931,12 @@ contract Dex
     // }
 
     // Accept order
-    function acceptOrder(uint256 orderId, uint256 watcherNum) external {
+    function acceptOrder(uint256 orderId, uint256 watcherNum, uint256 recoveryThreshold) external {
         Order storage _order = orders[orderId];
         require(_order.isActive, "Order is not active");
         require(balances[msg.sender][_order.tokenBuy] >= _order.amountBuy, "Insufficient balance to accept order");
         require(watcherList.length >= watcherNum, "watcher num invalid");
+        require(recoveryThreshold > 0 && recoveryThreshold <= watcherNum, "recovery threshold invalid");
 
         // Freeze buyer's funds
         balances[msg.sender][_order.tokenBuy] -= _order.amountBuy;
@@ -952,6 +952,7 @@ contract Dex
         newSession.exchangers.push(msg.sender); // Add buyer (Bob)
         newSession.expiration1 = block.timestamp + 30 seconds ; // Set expiration1
         newSession.expiration2 = block.timestamp + 1 minutes; // Set expiration2
+        newSession.recoveryThreshold = recoveryThreshold;
         
         //add watchers
         //uint256 randomIndex = uint256(keccak256(abi.encodePacked(block.timestamp, orderId)));
@@ -962,7 +963,7 @@ contract Dex
         }
         
         emit TokensFrozen(_order.tokenBuy, msg.sender, _order.amountBuy, orderId);
-        emit SessionCreated(orderId, _order.seller, msg.sender, newSession.watchers, newSession.expiration1, newSession.expiration2);
+        emit SessionCreated(orderId, _order.seller, msg.sender, newSession.watchers, recoveryThreshold, newSession.expiration1, newSession.expiration2);
     }
 
     //session swap1: shares validity check
@@ -985,6 +986,7 @@ contract Dex
 
         // Check stake
         require(stakedETH[msg.sender] >= MINIMAL_EXCHANGER_STAKE, "Insufficient stake");
+        _validateSessionPolicy(session, PK.length);
         // Check validity of shares PVGSSVerify()
         require(_PVGSSVerify(cp, xc, shat, shatArray, C, PK, I, useDualTest) == true, "pvgss verify failed");
 
@@ -1022,7 +1024,11 @@ contract Dex
         require(stakedETH[msg.sender] >= MINIMAL_EXCHANGER_STAKE, "Insufficient stake");
 
         // Invoke PVGSSKeyVrf and store decShare
-        require (_PVGSSKeyVrf(session.Cshares1[msg.sender], decShare, pubkey1[msg.sender], com1, com2, challenge, response) == true, "KeyVrf failed");
+        if (msg.sender == session.exchangers[0]) {
+            require(_PVGSSKeyVrf(session.Cshares1[msg.sender], decShare, pubkey1[msg.sender], com1, com2, challenge, response), "KeyVrf failed");
+        } else {
+            require(_PVGSSKeyVrf(session.Cshares2[msg.sender], decShare, pubkey1[msg.sender], com1, com2, challenge, response), "KeyVrf failed");
+        }
 
         session.shares[msg.sender] = decShare;
         if (msg.sender == session.exchangers[0]) {
@@ -1034,7 +1040,7 @@ contract Dex
         if (session.state == SessionState.finishSwap1) {
             session.state = SessionState.halfSwap2;
         } else if (session.state == SessionState.halfSwap2) {
-            session.state = SessionState.Success;
+            session.state = SessionState.Ready;
         }
         emit SessionStateUpdated(id, session.state);
     }
@@ -1058,6 +1064,7 @@ contract Dex
 
          // Check stake
          require(stakedETH[msg.sender] >= MINIMAL_EXCHANGER_STAKE, "Insufficient stake");
+         _validateSessionPolicy(session, PK.length);
          // Check validity of shares PVGSSVerify()
          require(_LSSSPVGSSVerify(cp, xc, shat, shatArray, C, PK, weights, weights1, I, I1, useDualTest) == true, "pvgss verify failed");
 
@@ -1096,6 +1103,11 @@ contract Dex
 
         // Check msg.sender is Alice or Bob
         require(msg.sender == session.exchangers[0] || msg.sender == session.exchangers[1], "Complainer is not valid");
+        require(
+            (msg.sender == session.exchangers[0] && session.seller_flag[1] && !session.buyer_flag[1]) ||
+            (msg.sender == session.exchangers[1] && session.buyer_flag[1] && !session.seller_flag[1]),
+            "Only the exchanger that opened may complain"
+        );
 
         // Check stake
         require(stakedETH[msg.sender] >= MINIMAL_EXCHANGER_STAKE, "Insufficient stake");
@@ -1118,8 +1130,13 @@ contract Dex
         require(session.state == SessionState.Complain, "Session is not complained");
         require(block.timestamp <= session.expiration2, "Session is out of t2");
         require(isWatcher(id, msg.sender), "Only watchers can submit share");
+        require(!session.watcher_flag[msg.sender], "Watcher response already submitted");
 
-        require (_PVGSSKeyVrf(session.Cshares1[msg.sender], decShare, pubkey1[msg.sender], com1, com2, challenge, response) == true, "KeyVrf failed");
+        if (!session.seller_flag[1]) {
+            require(_PVGSSKeyVrf(session.Cshares1[msg.sender], decShare, pubkey1[msg.sender], com1, com2, challenge, response), "KeyVrf failed");
+        } else {
+            require(_PVGSSKeyVrf(session.Cshares2[msg.sender], decShare, pubkey1[msg.sender], com1, com2, challenge, response), "KeyVrf failed");
+        }
         session.shares[msg.sender] = decShare;
         session.watcher_flag[msg.sender] = true;
     }
@@ -1148,34 +1165,27 @@ contract Dex
 
     function determine(uint256 orderId) external {
         Session storage session = sessions[orderId];
+        require(session.state != SessionState.Success && session.state != SessionState.Failure, "Session already finalized");
 
-        // Check if session has expired
-        require(block.timestamp > session.expiration2, "Session has not expired t2");
-
-        // Determine the final state based on conditions
-
-        if (session.state == SessionState.Success) {
-            // Both exchangers have completed swap2
+        if (session.state == SessionState.Ready) {
+            session.state = SessionState.Success;
             incentivizeAllWatchers(session);
         } else if (session.state == SessionState.Complain) {
-            if (getSubmittedWatchersCount(session) > 0) { //set threshold=2 now
-                //dispute resolved  
+            if (getSubmittedWatchersCount(session) >= session.recoveryThreshold) {
                 session.state = SessionState.Success;
+                incentivizePartWatchers(session);
+                penalizeFaultyExchangers(session);
             } else {
-                //dispute unresolved
+                require(block.timestamp > session.expiration2, "Recovery threshold not reached");
                 session.state = SessionState.Failure;
             }
-            incentivizePartWatchers(session);
-            penalizeFaultyExchangers(session);
         } else {
-            //at least one not swap1
+            require(block.timestamp > session.expiration2, "Session has not expired t2");
             if (session.state == SessionState.Active || session.state == SessionState.halfSwap1) {
                 penalizeFaultyExchangers(session);
             } else if (session.state == SessionState.finishSwap1) {
-                //both finish swap1
                 incentivizeAllWatchers(session);
-            } 
-            // set final state Failure
+            }
             session.state = SessionState.Failure;
         }
 
@@ -1190,9 +1200,9 @@ contract Dex
             freeze_balances[buyer][orderId][order.tokenBuy] -= order.amountBuy;
 
             // Transfer seller's tokens to buyer
-            IERC20(order.tokenSell).transfer(buyer, order.amountSell);
+            require(IERC20(order.tokenSell).transfer(buyer, order.amountSell), "Seller token transfer failed");
             // Transfer buyer's tokens to seller
-            IERC20(order.tokenBuy).transfer(seller, order.amountBuy);
+            require(IERC20(order.tokenBuy).transfer(seller, order.amountBuy), "Buyer token transfer failed");
         } else if (session.state == SessionState.Failure) {
             // Return frozen tokens to exchangers
             address seller = session.exchangers[0];

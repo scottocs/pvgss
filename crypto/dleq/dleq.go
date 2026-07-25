@@ -23,20 +23,17 @@ type Powers struct {
 	G2 *bn256.G1
 }
 
-// generateChallenge generates a challenge value using hash(power1, power2, c1, c2)
-func generateChallenge(power1 *bn256.G1, power2 *bn256.G1, c1 *bn256.G1, c2 *bn256.G1) *big.Int {
-	var combinedBytes []byte
+const dleqDomain = "PVGSS-DLEQ-v1"
 
-	// Append power1 (G1 element)
+// generateChallenge binds both bases, both public powers, and both commitments.
+func generateChallenge(g1 *bn256.G1, g2 *bn256.G1, power1 *bn256.G1, power2 *bn256.G1, c1 *bn256.G1, c2 *bn256.G1) *big.Int {
+	combinedBytes := []byte(dleqDomain)
+
+	combinedBytes = append(combinedBytes, g1.Marshal()...)
+	combinedBytes = append(combinedBytes, g2.Marshal()...)
 	combinedBytes = append(combinedBytes, power1.Marshal()...)
-
-	// Append power2 (G1 element)
 	combinedBytes = append(combinedBytes, power2.Marshal()...)
-
-	// Append c1 (G1 element)
 	combinedBytes = append(combinedBytes, c1.Marshal()...)
-
-	// Append c2 (G1 element)
 	combinedBytes = append(combinedBytes, c2.Marshal()...)
 
 	// Hash the combined bytes
@@ -69,7 +66,7 @@ func DLEQProve(g1 *bn256.G1, g2 *bn256.G1, secret *big.Int, powers *Powers) (*DL
 	c2 := new(bn256.G1).ScalarMult(g2, r)
 
 	// Generate challenge value using hash(powers.G1, powers.G2, c1, c2)
-	challenge := generateChallenge(powers.G1, powers.G2, c1, c2)
+	challenge := generateChallenge(g1, g2, powers.G1, powers.G2, c1, c2)
 
 	// Calculate response: response = r + challenge * secret
 	response := new(big.Int)
@@ -92,7 +89,10 @@ func DLEQProve(g1 *bn256.G1, g2 *bn256.G1, secret *big.Int, powers *Powers) (*DL
 // proof: proof to verify
 func DLEQVerify(g1 *bn256.G1, g2 *bn256.G1, powers *Powers, proof *DLEQProof) bool {
 	// Generate the challenge value using hash(powers.G1, powers.G2, c1, c2)
-	challenge := generateChallenge(powers.G1, powers.G2, proof.C1, proof.C2)
+	challenge := generateChallenge(g1, g2, powers.G1, powers.G2, proof.C1, proof.C2)
+	if proof.Challenge == nil || proof.Challenge.Cmp(challenge) != 0 {
+		return false
+	}
 
 	// Verify: g1^response == c1 + powers.G1^challenge
 	// i.e.: g1^response == c1 * powers.G1^challenge

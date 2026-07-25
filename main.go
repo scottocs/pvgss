@@ -142,10 +142,6 @@ func main() {
 	receipt22, _ := bind.WaitMined(context.Background(), client, tx22)
 	fmt.Println("On-chain Shares verification Gas cost = ", receipt22.GasUsed)
 
-	// Get On-chain PVGSSVerify result
-	lonchainIsShareValid, _ := ctc.GetLSSSVerifyResult(&bind.CallOpts{})
-	fmt.Println("On-chain Shares verification result = ", lonchainIsShareValid)
-
 	// 4. PVGSSPreRecon
 	ldecShares := make([]*bn128.G1, num)
 	lproofs := make([]*dleq.DLEQProof, num)
@@ -170,9 +166,6 @@ func main() {
 		receipt25, _ := bind.WaitMined(context.Background(), client, tx23)
 		lAllGasUsed += receipt25.GasUsed
 	}
-	lonchainIsKeyValid, _ := ctc.GetKeyVrfResult(&bind.CallOpts{})
-	// fmt.Println("order = ", bn128.Order)
-	fmt.Println("On-chain DecShares verification result =  = ", lonchainIsKeyValid)
 	fmt.Println("On-chain DecShares verification Gas cost = ", lAllGasUsed)
 
 	//========================================= PVGSS-SSS Test ==========================================
@@ -208,9 +201,6 @@ func main() {
 	receipt9, _ := bind.WaitMined(context.Background(), client, tx9)
 	fmt.Println("On-chain Shares verification Gas cost = ", receipt9.GasUsed)
 
-	onchainIsShareValid, _ := ctc.GetVerifyResult(&bind.CallOpts{})
-	fmt.Println("On-chain Shares verification result = ", onchainIsShareValid)
-
 	// 4. PVGSSPreRecon
 	decShares := make([]*bn128.G1, num)
 	proofs := make([]*dleq.DLEQProof, num)
@@ -235,9 +225,6 @@ func main() {
 		receipt11, _ := bind.WaitMined(context.Background(), client, tx11)
 		allGasUsed += receipt11.GasUsed
 	}
-	onchainIsKeyValid, _ := ctc.GetKeyVrfResult(&bind.CallOpts{})
-	// fmt.Println("order = ", bn128.Order)
-	fmt.Println("On-chain DecShares verification result =  = ", onchainIsKeyValid)
 	fmt.Println("On-chain DecShares verification Gas cost = ", allGasUsed)
 
 }
