@@ -95,12 +95,45 @@ Version: 0.8.25-develop
     ```
 
     The runner deploys fresh contracts, prepares accounts, uses `evm_increaseTime`
-    for timeout transitions, and records only the target DEX operations.
+    for timeout transitions, and records only the target DEX operations. Its
+    default watcher counts are `1,4,7,10,13,16,19,22,25,28`.
 
 7. Run the main.go
     ```bash
     go run main.go
     ```
+
+## Deploy the contracts to Ethereum Sepolia
+
+Sepolia is used for the public-testnet deployment. Use a dedicated testnet-only
+account; do not reuse a mainnet private key.
+
+1. Create the local configuration and fill in the RPC URL and deployer key:
+
+    ```bash
+    cp .env.testnet.example .env.testnet
+    ```
+
+2. Fund the deployer address with Sepolia ETH from a faucet.
+
+3. Run the read-only preflight. It checks chain ID `11155111`, bytecode
+   deployability, estimated gas, and the deployer balance:
+
+    ```bash
+    go run ./cmd/testnetdeploy
+    ```
+
+4. Broadcast the three deployments only after the preflight succeeds:
+
+    ```bash
+    go run ./cmd/testnetdeploy -broadcast
+    ```
+
+The command waits for and verifies the deployed bytecode, then writes contract
+addresses, transaction hashes, block numbers, and gas usage to
+`deployments/sepolia.json`. It never writes the private key to the deployment
+record. The existing `cmd/dexgas` runner remains local-chain only because it
+uses development-only RPC methods to advance time and fund accounts.
 
 ## Introduction to the application of DEX
 

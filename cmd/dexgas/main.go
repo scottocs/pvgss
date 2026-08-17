@@ -57,7 +57,7 @@ type env struct {
 func main() {
 	rpcURL := flag.String("rpc", "ws://127.0.0.1:8545", "local Ethereum JSON-RPC endpoint")
 	outPath := flag.String("out", "paper/dex_gas.csv", "CSV output path")
-	nValues := flag.String("n", "1,2,3,4,5,6,7,8,9,10", "comma-separated watcher counts")
+	nValues := flag.String("n", "1,4,7,10,13,16,19,22,25,28", "comma-separated watcher counts")
 	schemes := flag.String("schemes", "lsss-exact,sss-exact,lsss-dual,sss-dual", "comma-separated schemes: lsss-exact,sss-exact,lsss-dual,sss-dual")
 	flag.Parse()
 
