@@ -791,7 +791,7 @@ contract Dex
 
     // State variable to track session state
     // Ready means that both exchanger openings have been verified but settlement has not executed.
-    enum SessionState { Active, halfSwap1, finishSwap1, halfSwap2, Ready, Complain, Success, Failure }
+    enum SessionState { Active, HalfCommitted, Committed, HalfOpened, Ready, Complain, Success, Failure }
     struct Session {
         SessionState state; // Session state
         address[] exchangers; // seller as exchanger[0], buyer as exchanger[1] in the session
@@ -966,20 +966,20 @@ contract Dex
         emit SessionCreated(orderId, _order.seller, msg.sender, newSession.watchers, recoveryThreshold, newSession.expiration1, newSession.expiration2);
     }
 
-    //session swap1: shares validity check
-    function swap1(uint256 id, G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray,G1Point[] memory C, G1Point[] memory PK, uint256[] memory I) external onlyExchanger(id){
-        _swap1(id, cp, xc, shat, shatArray, C, PK, I, false);
+    // Submit and verify a recursive-Shamir PVGSS commitment.
+    function commit(uint256 id, G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray,G1Point[] memory C, G1Point[] memory PK, uint256[] memory I) external onlyExchanger(id){
+        _commit(id, cp, xc, shat, shatArray, C, PK, I, false);
     }
 
-    function swap1Dual(uint256 id, G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray,G1Point[] memory C, G1Point[] memory PK, uint256[] memory I) external onlyExchanger(id){
-        _swap1(id, cp, xc, shat, shatArray, C, PK, I, true);
+    function commitDual(uint256 id, G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray,G1Point[] memory C, G1Point[] memory PK, uint256[] memory I) external onlyExchanger(id){
+        _commit(id, cp, xc, shat, shatArray, C, PK, I, true);
     }
 
-    function _swap1(uint256 id, G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray,G1Point[] memory C, G1Point[] memory PK, uint256[] memory I, bool useDualTest) internal {
+    function _commit(uint256 id, G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray,G1Point[] memory C, G1Point[] memory PK, uint256[] memory I, bool useDualTest) internal {
         Session storage session = sessions[id];
 
         // Check session state
-        require(session.state == SessionState.Active || session.state == SessionState.halfSwap1, "Session state is invalid for swap1");
+        require(session.state == SessionState.Active || session.state == SessionState.HalfCommitted, "Invalid commit state");
 
         // Check Expiration1
         require(block.timestamp <= session.expiration1, "Session is expired t1");
@@ -1006,19 +1006,19 @@ contract Dex
         }
     
         if (session.state == SessionState.Active) {
-            session.state = SessionState.halfSwap1;
-        } else if (session.state == SessionState.halfSwap1) {
-            session.state = SessionState.finishSwap1;
+            session.state = SessionState.HalfCommitted;
+        } else if (session.state == SessionState.HalfCommitted) {
+            session.state = SessionState.Committed;
         }
 
         // Update session state based on current state
         emit SessionStateUpdated(id, session.state);
     }
 
-    function swap2(uint256 id, G1Point calldata decShare, G1Point calldata com1, G1Point calldata com2, uint256 challenge, uint256 response) external onlyExchanger(id){
+    function open(uint256 id, G1Point calldata decShare, G1Point calldata com1, G1Point calldata com2, uint256 challenge, uint256 response) external onlyExchanger(id){
         Session storage session = sessions[id];
         // Check session state
-        require(session.state == SessionState.finishSwap1 || session.state == SessionState.halfSwap2, "Session state is invalid for swap2");
+        require(session.state == SessionState.Committed || session.state == SessionState.HalfOpened, "Invalid open state");
 
         // Check stake
         require(stakedETH[msg.sender] >= MINIMAL_EXCHANGER_STAKE, "Insufficient stake");
@@ -1037,27 +1037,27 @@ contract Dex
             session.buyer_flag[1] = true;
         }
 
-        if (session.state == SessionState.finishSwap1) {
-            session.state = SessionState.halfSwap2;
-        } else if (session.state == SessionState.halfSwap2) {
+        if (session.state == SessionState.Committed) {
+            session.state = SessionState.HalfOpened;
+        } else if (session.state == SessionState.HalfOpened) {
             session.state = SessionState.Ready;
         }
         emit SessionStateUpdated(id, session.state);
     }
 
-     function lswap1(uint256 id, G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray, G1Point[] memory C, G1Point[] memory PK, uint256[] memory weights, uint256[] memory weights1 ,uint256[] memory I, uint256[] memory I1) external onlyExchanger(id){
-         _lswap1(id, cp, xc, shat, shatArray, C, PK, weights, weights1, I, I1, false);
+     function commitLSSS(uint256 id, G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray, G1Point[] memory C, G1Point[] memory PK, uint256[] memory weights, uint256[] memory weights1 ,uint256[] memory I, uint256[] memory I1) external onlyExchanger(id){
+         _commitLSSS(id, cp, xc, shat, shatArray, C, PK, weights, weights1, I, I1, false);
      }
 
-     function lswap1Dual(uint256 id, G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray, G1Point[] memory C, G1Point[] memory PK, uint256[] memory weights, uint256[] memory weights1 ,uint256[] memory I, uint256[] memory I1) external onlyExchanger(id){
-         _lswap1(id, cp, xc, shat, shatArray, C, PK, weights, weights1, I, I1, true);
+     function commitLSSSDual(uint256 id, G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray, G1Point[] memory C, G1Point[] memory PK, uint256[] memory weights, uint256[] memory weights1 ,uint256[] memory I, uint256[] memory I1) external onlyExchanger(id){
+         _commitLSSS(id, cp, xc, shat, shatArray, C, PK, weights, weights1, I, I1, true);
      }
 
-     function _lswap1(uint256 id, G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray, G1Point[] memory C, G1Point[] memory PK, uint256[] memory weights, uint256[] memory weights1 ,uint256[] memory I, uint256[] memory I1, bool useDualTest) internal {
+     function _commitLSSS(uint256 id, G1Point[] memory cp, uint256 xc, uint256 shat, uint256[] memory shatArray, G1Point[] memory C, G1Point[] memory PK, uint256[] memory weights, uint256[] memory weights1 ,uint256[] memory I, uint256[] memory I1, bool useDualTest) internal {
          Session storage session = sessions[id];
 
          // Check session state
-         require(session.state == SessionState.Active || session.state == SessionState.halfSwap1, "Session state is invalid for swap1");
+         require(session.state == SessionState.Active || session.state == SessionState.HalfCommitted, "Invalid commit state");
 
          // Check Expiration1
          require(block.timestamp <= session.expiration1, "Session is expired t1");
@@ -1084,9 +1084,9 @@ contract Dex
          }
     
          if (session.state == SessionState.Active) {
-             session.state = SessionState.halfSwap1;
-         } else if (session.state == SessionState.halfSwap1) {
-             session.state = SessionState.finishSwap1;
+             session.state = SessionState.HalfCommitted;
+         } else if (session.state == SessionState.HalfCommitted) {
+             session.state = SessionState.Committed;
          }
 
          // Update session state based on current state
@@ -1099,7 +1099,7 @@ contract Dex
 
         require(block.timestamp > session.expiration1, "Complaint period has not started");
         require(block.timestamp <= session.expiration2, "Session is out of t2");
-        require(session.state == SessionState.halfSwap2, "Session state is not valid");
+        require(session.state == SessionState.HalfOpened, "Invalid complaint state");
 
         // Check msg.sender is Alice or Bob
         require(msg.sender == session.exchangers[0] || msg.sender == session.exchangers[1], "Complainer is not valid");
@@ -1181,9 +1181,9 @@ contract Dex
             }
         } else {
             require(block.timestamp > session.expiration2, "Session has not expired t2");
-            if (session.state == SessionState.Active || session.state == SessionState.halfSwap1) {
+            if (session.state == SessionState.Active || session.state == SessionState.HalfCommitted) {
                 penalizeFaultyExchangers(session);
-            } else if (session.state == SessionState.finishSwap1) {
+            } else if (session.state == SessionState.Committed) {
                 incentivizeAllWatchers(session);
             }
             session.state = SessionState.Failure;
@@ -1242,12 +1242,12 @@ contract Dex
         }
     }
 
-    //Faulty exchanger: (not swap1) or (both swap1 not finish swap2)
+    // Penalize an exchanger that fails to commit or fails to open after both commitments.
     function penalizeFaultyExchangers(Session storage session) internal {
         address seller = session.exchangers[0];
         address buyer = session.exchangers[1];
 
-        //(both swap1 not finish swap2)
+        // Both parties committed, but at least one failed to open.
         if (session.seller_flag[0] && session.buyer_flag[0]) {
             if (!session.seller_flag[1]) {
                 stakedETH[seller] -= 0.1 ether; // Penalize with 0.1 eth
@@ -1258,7 +1258,7 @@ contract Dex
                 emit Penalized(buyer, 0.1 ether);
             }
         } else {
-            //(not swap1)
+            // At least one party failed to commit.
             if (!session.seller_flag[0]) {
                 stakedETH[seller] -= 0.1 ether; // Penalize with 0.1 eth
                 emit Penalized(seller, 0.1 ether);

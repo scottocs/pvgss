@@ -168,8 +168,8 @@ func TestDexGasLSSS(t *testing.T) {
 			loffchainIsKeyValid[i], _ = lssspvgss.PVGSSKeyVrf(lC[i], ldecShares[i], PK1[i], lproofs[i])
 		}
 
-		// On-chain  account2 call swap1 in t1
-		log.Println("account2 Lswap1 in t1")
+		// On-chain account2 commits in t1.
+		log.Println("account2 commitLSSS in t1")
 
 		// auth21 := utils.Transact(client, privateKeys[1], big.NewInt(0))
 		// tx21, _ := dexInstance.LUploadProof(auth21, utils.G1sToPoints(num, lprfs.Cp), lprfs.Xc, lprfs.Shat, lprfs.Shatarry)
@@ -177,30 +177,30 @@ func TestDexGasLSSS(t *testing.T) {
 		// log.Println("On-chain LUploadProof Gas cost = ", receipt.GasUsed)
 
 		auth10 := utils.Transact(client, privateKeys[1], big.NewInt(0))
-		tx10, _ := dexInstance.Lswap1(auth10, orderId, utils.G1sToPoints(num, lprfs.Cp), lprfs.Xc, lprfs.Shat, lprfs.Shatarry, utils.G1sToPoints(num, lC), utils.G1sToPoints(num, PK1), weights0, weights, utils.IntToBig(I0), utils.IntToBig(I00))
+		tx10, _ := dexInstance.CommitLSSS(auth10, orderId, utils.G1sToPoints(num, lprfs.Cp), lprfs.Xc, lprfs.Shat, lprfs.Shatarry, utils.G1sToPoints(num, lC), utils.G1sToPoints(num, PK1), weights0, weights, utils.IntToBig(I0), utils.IntToBig(I00))
 		receipt, _ := bind.WaitMined(context.Background(), client, tx10)
-		log.Println("On-chain LSwap1 Gas cost = ", receipt.GasUsed)
+		log.Println("On-chain CommitLSSS Gas cost = ", receipt.GasUsed)
 
-		//account1 call swap1 and swap2 in t1
+		// Account1 commits and opens in t1.
 
-		//swap1
-		log.Println("account1 Lswap1 in t1")
+		// commit
+		log.Println("account1 commitLSSS in t1")
 		// auth := utils.Transact(client, privateKeys[0], big.NewInt(0))
 		// tx, _ := dexInstance.LUploadProof(auth, utils.G1sToPoints(num, lprfs.Cp), lprfs.Xc, lprfs.Shat, lprfs.Shatarry)
 		// receipt, _ = bind.WaitMined(context.Background(), client, tx)
 		// log.Println("On-chain LUploadProof Gas cost = ", receipt.GasUsed)
 
 		auth := utils.Transact(client, privateKeys[0], big.NewInt(0))
-		tx, _ := dexInstance.Lswap1(auth, orderId, utils.G1sToPoints(num, lprfs.Cp), lprfs.Xc, lprfs.Shat, lprfs.Shatarry, utils.G1sToPoints(num, lC), utils.G1sToPoints(num, PK1), weights0, weights, utils.IntToBig(I0), utils.IntToBig(I00))
+		tx, _ := dexInstance.CommitLSSS(auth, orderId, utils.G1sToPoints(num, lprfs.Cp), lprfs.Xc, lprfs.Shat, lprfs.Shatarry, utils.G1sToPoints(num, lC), utils.G1sToPoints(num, PK1), weights0, weights, utils.IntToBig(I0), utils.IntToBig(I00))
 		receipt, _ = bind.WaitMined(context.Background(), client, tx)
-		log.Println("On-chain LSwap1 Gas cost = ", receipt.GasUsed)
+		log.Println("On-chain CommitLSSS Gas cost = ", receipt.GasUsed)
 
-		//swap2
-		log.Println("account1 swap2 in t1")
+		// open
+		log.Println("account1 open in t1")
 		auth = utils.Transact(client, privateKeys[0], big.NewInt(0))
-		tx, _ = dexInstance.Swap2(auth, orderId, utils.G1ToPoint(ldecShares[0]), utils.G1ToPoint(lproofs[0].C1), utils.G1ToPoint(lproofs[0].C2), lproofs[0].Challenge, lproofs[0].Response)
+		tx, _ = dexInstance.Open(auth, orderId, utils.G1ToPoint(ldecShares[0]), utils.G1ToPoint(lproofs[0].C1), utils.G1ToPoint(lproofs[0].C2), lproofs[0].Challenge, lproofs[0].Response)
 		receipt, _ = bind.WaitMined(context.Background(), client, tx)
-		log.Println("On-chain Swap2 Gas cost = ", receipt.GasUsed)
+		log.Println("On-chain Open Gas cost = ", receipt.GasUsed)
 
 		log.Println("sleep until t2")
 		time.Sleep(31 * time.Second)
@@ -212,12 +212,12 @@ func TestDexGasLSSS(t *testing.T) {
 		receipt, _ = bind.WaitMined(context.Background(), client, tx)
 		log.Println("On-chain Complain Gas cost = ", receipt.GasUsed)
 
-		//account2 call swap2 in t1
-		// fmt.Println("account2 swap2 in t1")
+		// Account2 opens in t1.
+		// fmt.Println("account2 open in t1")
 		// auth = utils.Transact(client, privateKeys[1], big.NewInt(0))
-		// tx, _ = dexInstance.Swap2(auth, orderId, G1ToPoint(decShares[1]))
+		// tx, _ = dexInstance.Open(auth, orderId, G1ToPoint(decShares[1]))
 		// receipt, _ = bind.WaitMined(context.Background(), client, tx)
-		// fmt.Println("On-chain Swap2 Gas cost = ", receipt.GasUsed)
+		// fmt.Println("On-chain Open Gas cost = ", receipt.GasUsed)
 
 		// //enough watchers submit share in t2 if complain
 		// fmt.Println("enough watchers submit share in t2")
@@ -392,37 +392,37 @@ func TestDexGasSSS(t *testing.T) {
 		}
 		log.Println("Off-chain KeyVerification result = ", offchainIsKeyValid)
 
-		// On-chain  account2 call swap1 in t1
-		log.Println("account2 swap1 in t1")
+		// On-chain account2 commits in t1.
+		log.Println("account2 commit in t1")
 		// auth := utils.Transact(client, privateKeys[1], big.NewInt(0))
 		// tx, _ := dexInstance.UploadProof(auth, utils.G1sToPoints(num, prfs.Cp), prfs.Xc, prfs.Shat, prfs.Shatarry)
 		// _, _ = bind.WaitMined(context.Background(), client, tx)
 
 		auth10 := utils.Transact(client, privateKeys[1], big.NewInt(0))
-		tx10, _ := dexInstance.Swap1(auth10, orderId, utils.G1sToPoints(num, prfs.Cp), prfs.Xc, prfs.Shat, prfs.Shatarry, utils.G1sToPoints(num, C), utils.G1sToPoints(num, PK1), VrfQ)
+		tx10, _ := dexInstance.Commit(auth10, orderId, utils.G1sToPoints(num, prfs.Cp), prfs.Xc, prfs.Shat, prfs.Shatarry, utils.G1sToPoints(num, C), utils.G1sToPoints(num, PK1), VrfQ)
 		receipt, _ := bind.WaitMined(context.Background(), client, tx10)
-		log.Println("On-chain Swap1 Gas cost = ", receipt.GasUsed)
+		log.Println("On-chain Commit Gas cost = ", receipt.GasUsed)
 
-		//account1 call swap1 and swap2 in t1
+		// Account1 commits and opens in t1.
 
-		//swap1
-		log.Println("account1 swap1 in t1")
+		// commit
+		log.Println("account1 commit in t1")
 		// auth = utils.Transact(client, privateKeys[0], big.NewInt(0))
 		// tx, _ = dexInstance.UploadProof(auth, utils.G1sToPoints(num, prfs.Cp), prfs.Xc, prfs.Shat, prfs.Shatarry)
 		// receipt, _ = bind.WaitMined(context.Background(), client, tx)
 		// log.Println("On-chain UploadProof Gas cost = ", receipt.GasUsed)
 
 		auth := utils.Transact(client, privateKeys[0], big.NewInt(0))
-		tx, _ := dexInstance.Swap1(auth, orderId, utils.G1sToPoints(num, prfs.Cp), prfs.Xc, prfs.Shat, prfs.Shatarry, utils.G1sToPoints(num, C), utils.G1sToPoints(num, PK1), VrfQ)
+		tx, _ := dexInstance.Commit(auth, orderId, utils.G1sToPoints(num, prfs.Cp), prfs.Xc, prfs.Shat, prfs.Shatarry, utils.G1sToPoints(num, C), utils.G1sToPoints(num, PK1), VrfQ)
 		receipt, _ = bind.WaitMined(context.Background(), client, tx)
-		log.Println("On-chain Swap1 Gas cost = ", receipt.GasUsed)
+		log.Println("On-chain Commit Gas cost = ", receipt.GasUsed)
 
-		//swap2
-		log.Println("account1 swap2 in t1")
+		// open
+		log.Println("account1 open in t1")
 		auth = utils.Transact(client, privateKeys[0], big.NewInt(0))
-		tx, _ = dexInstance.Swap2(auth, orderId, utils.G1ToPoint(decShares[0]), utils.G1ToPoint(proofs[0].C1), utils.G1ToPoint(proofs[0].C2), proofs[0].Challenge, proofs[0].Response)
+		tx, _ = dexInstance.Open(auth, orderId, utils.G1ToPoint(decShares[0]), utils.G1ToPoint(proofs[0].C1), utils.G1ToPoint(proofs[0].C2), proofs[0].Challenge, proofs[0].Response)
 		receipt, _ = bind.WaitMined(context.Background(), client, tx)
-		log.Println("On-chain Swap2 Gas cost = ", receipt.GasUsed)
+		log.Println("On-chain Open Gas cost = ", receipt.GasUsed)
 
 		log.Println("sleep until t2")
 		time.Sleep(31 * time.Second)
@@ -434,12 +434,12 @@ func TestDexGasSSS(t *testing.T) {
 		receipt, _ = bind.WaitMined(context.Background(), client, tx)
 		log.Println("On-chain Complain Gas cost = ", receipt.GasUsed)
 
-		//account2 call swap2 in t1
-		// fmt.Println("account2 swap2 in t1")
+		// Account2 opens in t1.
+		// fmt.Println("account2 open in t1")
 		// auth = utils.Transact(client, privateKeys[1], big.NewInt(0))
-		// tx, _ = dexInstance.Swap2(auth, orderId, G1ToPoint(decShares[1]))
+		// tx, _ = dexInstance.Open(auth, orderId, G1ToPoint(decShares[1]))
 		// receipt, _ = bind.WaitMined(context.Background(), client, tx)
-		// fmt.Println("On-chain Swap2 Gas cost = ", receipt.GasUsed)
+		// fmt.Println("On-chain Open Gas cost = ", receipt.GasUsed)
 
 		// //enough watchers submit share in t2 if complain
 		// fmt.Println("enough watchers submit share in t2")

@@ -218,13 +218,13 @@ func (e *env) runLSSS(n int, orderID *big.Int, dual bool) []gasRow {
 
 	var r1, r2 *types.Receipt
 	if dual {
-		r1 = e.waitMust(e.dex.Lswap1Dual(e.auth(1, big.NewInt(0)), orderID, g1sToPoints(buyerProof.Cp), buyerProof.Xc, buyerProof.Shat, buyerProof.Shatarry, g1sToPoints(buyerC), g1sToPoints(pk), w0, w1, intsToBig(i0), intsToBig(i1)))
-		r2 = e.waitMust(e.dex.Lswap1Dual(e.auth(0, big.NewInt(0)), orderID, g1sToPoints(sellerProof.Cp), sellerProof.Xc, sellerProof.Shat, sellerProof.Shatarry, g1sToPoints(sellerC), g1sToPoints(pk), w0, w1, intsToBig(i0), intsToBig(i1)))
+		r1 = e.waitMust(e.dex.CommitLSSSDual(e.auth(1, big.NewInt(0)), orderID, g1sToPoints(buyerProof.Cp), buyerProof.Xc, buyerProof.Shat, buyerProof.Shatarry, g1sToPoints(buyerC), g1sToPoints(pk), w0, w1, intsToBig(i0), intsToBig(i1)))
+		r2 = e.waitMust(e.dex.CommitLSSSDual(e.auth(0, big.NewInt(0)), orderID, g1sToPoints(sellerProof.Cp), sellerProof.Xc, sellerProof.Shat, sellerProof.Shatarry, g1sToPoints(sellerC), g1sToPoints(pk), w0, w1, intsToBig(i0), intsToBig(i1)))
 	} else {
-		r1 = e.waitMust(e.dex.Lswap1(e.auth(1, big.NewInt(0)), orderID, g1sToPoints(buyerProof.Cp), buyerProof.Xc, buyerProof.Shat, buyerProof.Shatarry, g1sToPoints(buyerC), g1sToPoints(pk), w0, w1, intsToBig(i0), intsToBig(i1)))
-		r2 = e.waitMust(e.dex.Lswap1(e.auth(0, big.NewInt(0)), orderID, g1sToPoints(sellerProof.Cp), sellerProof.Xc, sellerProof.Shat, sellerProof.Shatarry, g1sToPoints(sellerC), g1sToPoints(pk), w0, w1, intsToBig(i0), intsToBig(i1)))
+		r1 = e.waitMust(e.dex.CommitLSSS(e.auth(1, big.NewInt(0)), orderID, g1sToPoints(buyerProof.Cp), buyerProof.Xc, buyerProof.Shat, buyerProof.Shatarry, g1sToPoints(buyerC), g1sToPoints(pk), w0, w1, intsToBig(i0), intsToBig(i1)))
+		r2 = e.waitMust(e.dex.CommitLSSS(e.auth(0, big.NewInt(0)), orderID, g1sToPoints(sellerProof.Cp), sellerProof.Xc, sellerProof.Shat, sellerProof.Shatarry, g1sToPoints(sellerC), g1sToPoints(pk), w0, w1, intsToBig(i0), intsToBig(i1)))
 	}
-	r3 := e.waitMust(e.dex.Swap2(e.auth(0, big.NewInt(0)), orderID, g1ToPoint(sellerDec[0]), g1ToPoint(sellerOpeningProofs[0].C1), g1ToPoint(sellerOpeningProofs[0].C2), sellerOpeningProofs[0].Challenge, sellerOpeningProofs[0].Response))
+	r3 := e.waitMust(e.dex.Open(e.auth(0, big.NewInt(0)), orderID, g1ToPoint(sellerDec[0]), g1ToPoint(sellerOpeningProofs[0].C1), g1ToPoint(sellerOpeningProofs[0].C2), sellerOpeningProofs[0].Challenge, sellerOpeningProofs[0].Response))
 
 	e.increaseTime(31)
 	r4 := e.waitMust(e.dex.Complain(e.auth(0, big.NewInt(0)), orderID))
@@ -232,10 +232,10 @@ func (e *env) runLSSS(n int, orderID *big.Int, dual bool) []gasRow {
 	r6 := e.waitMust(e.dex.Determine(e.auth(1, big.NewInt(0)), orderID))
 
 	return []gasRow{
-		{"17", scheme, n, "counterparty_lswap1", r1.GasUsed, r1.TxHash},
-		{"17", scheme, n, "swap1_plus_swap2", r2.GasUsed + r3.GasUsed, r2.TxHash},
-		{"17", scheme, n, "lswap1", r2.GasUsed, r2.TxHash},
-		{"18", scheme, n, "swap2", r5.GasUsed, r5.TxHash},
+		{"17", scheme, n, "counterparty_commit", r1.GasUsed, r1.TxHash},
+		{"17", scheme, n, "commit_plus_open", r2.GasUsed + r3.GasUsed, r2.TxHash},
+		{"17", scheme, n, "commit", r2.GasUsed, r2.TxHash},
+		{"18", scheme, n, "open", r5.GasUsed, r5.TxHash},
 		{"18", scheme, n, "complain", r4.GasUsed, r4.TxHash},
 		{"18", scheme, n, "determine", r6.GasUsed, r6.TxHash},
 	}
@@ -264,13 +264,13 @@ func (e *env) runSSS(n int, orderID *big.Int, dual bool) []gasRow {
 
 	var r1, r2 *types.Receipt
 	if dual {
-		r1 = e.waitMust(e.dex.Swap1Dual(e.auth(1, big.NewInt(0)), orderID, g1sToPoints(buyerProof.Cp), buyerProof.Xc, buyerProof.Shat, buyerProof.Shatarry, g1sToPoints(buyerC), g1sToPoints(pk), vrfQ))
-		r2 = e.waitMust(e.dex.Swap1Dual(e.auth(0, big.NewInt(0)), orderID, g1sToPoints(sellerProof.Cp), sellerProof.Xc, sellerProof.Shat, sellerProof.Shatarry, g1sToPoints(sellerC), g1sToPoints(pk), vrfQ))
+		r1 = e.waitMust(e.dex.CommitDual(e.auth(1, big.NewInt(0)), orderID, g1sToPoints(buyerProof.Cp), buyerProof.Xc, buyerProof.Shat, buyerProof.Shatarry, g1sToPoints(buyerC), g1sToPoints(pk), vrfQ))
+		r2 = e.waitMust(e.dex.CommitDual(e.auth(0, big.NewInt(0)), orderID, g1sToPoints(sellerProof.Cp), sellerProof.Xc, sellerProof.Shat, sellerProof.Shatarry, g1sToPoints(sellerC), g1sToPoints(pk), vrfQ))
 	} else {
-		r1 = e.waitMust(e.dex.Swap1(e.auth(1, big.NewInt(0)), orderID, g1sToPoints(buyerProof.Cp), buyerProof.Xc, buyerProof.Shat, buyerProof.Shatarry, g1sToPoints(buyerC), g1sToPoints(pk), vrfQ))
-		r2 = e.waitMust(e.dex.Swap1(e.auth(0, big.NewInt(0)), orderID, g1sToPoints(sellerProof.Cp), sellerProof.Xc, sellerProof.Shat, sellerProof.Shatarry, g1sToPoints(sellerC), g1sToPoints(pk), vrfQ))
+		r1 = e.waitMust(e.dex.Commit(e.auth(1, big.NewInt(0)), orderID, g1sToPoints(buyerProof.Cp), buyerProof.Xc, buyerProof.Shat, buyerProof.Shatarry, g1sToPoints(buyerC), g1sToPoints(pk), vrfQ))
+		r2 = e.waitMust(e.dex.Commit(e.auth(0, big.NewInt(0)), orderID, g1sToPoints(sellerProof.Cp), sellerProof.Xc, sellerProof.Shat, sellerProof.Shatarry, g1sToPoints(sellerC), g1sToPoints(pk), vrfQ))
 	}
-	r3 := e.waitMust(e.dex.Swap2(e.auth(0, big.NewInt(0)), orderID, g1ToPoint(sellerDec[0]), g1ToPoint(sellerOpeningProofs[0].C1), g1ToPoint(sellerOpeningProofs[0].C2), sellerOpeningProofs[0].Challenge, sellerOpeningProofs[0].Response))
+	r3 := e.waitMust(e.dex.Open(e.auth(0, big.NewInt(0)), orderID, g1ToPoint(sellerDec[0]), g1ToPoint(sellerOpeningProofs[0].C1), g1ToPoint(sellerOpeningProofs[0].C2), sellerOpeningProofs[0].Challenge, sellerOpeningProofs[0].Response))
 
 	e.increaseTime(31)
 	r4 := e.waitMust(e.dex.Complain(e.auth(0, big.NewInt(0)), orderID))
@@ -278,10 +278,10 @@ func (e *env) runSSS(n int, orderID *big.Int, dual bool) []gasRow {
 	r6 := e.waitMust(e.dex.Determine(e.auth(1, big.NewInt(0)), orderID))
 
 	return []gasRow{
-		{"17", scheme, n, "counterparty_swap1", r1.GasUsed, r1.TxHash},
-		{"17", scheme, n, "swap1_plus_swap2", r2.GasUsed + r3.GasUsed, r2.TxHash},
-		{"17", scheme, n, "swap1", r2.GasUsed, r2.TxHash},
-		{"18", scheme, n, "swap2", r5.GasUsed, r5.TxHash},
+		{"17", scheme, n, "counterparty_commit", r1.GasUsed, r1.TxHash},
+		{"17", scheme, n, "commit_plus_open", r2.GasUsed + r3.GasUsed, r2.TxHash},
+		{"17", scheme, n, "commit", r2.GasUsed, r2.TxHash},
+		{"18", scheme, n, "open", r5.GasUsed, r5.TxHash},
 		{"18", scheme, n, "complain", r4.GasUsed, r4.TxHash},
 		{"18", scheme, n, "determine", r6.GasUsed, r6.TxHash},
 	}
